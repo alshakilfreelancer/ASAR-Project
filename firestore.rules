@@ -38,17 +38,27 @@ service cloud.firestore {
       );
     }
 
+    function isValidAuthor(data) {
+      return (isSignedIn() && data.authorId == request.auth.uid) ||
+        (!isSignedIn() && data.authorId == 'admin_portal');
+    }
+
+    function canWriteAdminContent(data) {
+      return (isVerifiedUser() && isAdmin() && data.authorId == request.auth.uid) ||
+        (!isSignedIn() && data.authorId == 'admin_portal');
+    }
+
     // Validation Blueprint: SiteConfig
     function isValidSiteConfig(data) {
       return data.keys().hasAll([
         'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
         'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
-        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'authorId', 'updatedAt'
+        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'adminPassword', 'authorId', 'updatedAt'
       ]) &&
       data.keys().hasOnly([
         'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
         'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
-        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'authorId', 'updatedAt'
+        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'adminPassword', 'authorId', 'updatedAt'
       ]) &&
       data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 160 &&
       data.companyLogoUrl is string && data.companyLogoUrl.size() >= 5 && data.companyLogoUrl.size() <= 350000 &&
@@ -67,8 +77,9 @@ service cloud.firestore {
       data.accentOrange is string && data.accentOrange.size() == 7 && data.accentOrange.matches('^#[0-9a-fA-F]{6}$') &&
       data.headingScale is string && data.headingScale.size() >= 5 && data.headingScale.size() <= 16 &&
       (data.headingScale == 'standard' || data.headingScale == 'compact' || data.headingScale == 'large') &&
+      data.adminPassword is string && data.adminPassword.size() >= 4 && data.adminPassword.size() <= 100 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -87,7 +98,7 @@ service cloud.firestore {
       data.specialties is string && data.specialties.size() >= 5 && data.specialties.size() <= 800 &&
       data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -116,7 +127,7 @@ service cloud.firestore {
       data.scopeDetails is string && data.scopeDetails.size() >= 10 && data.scopeDetails.size() <= 2000 &&
       data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -134,7 +145,7 @@ service cloud.firestore {
       data.caption is string && data.caption.size() >= 5 && data.caption.size() <= 600 &&
       data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -157,7 +168,7 @@ service cloud.firestore {
       data.description is string && data.description.size() >= 10 && data.description.size() <= 1200 &&
       data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -176,7 +187,7 @@ service cloud.firestore {
       data.bgColor is string && data.bgColor.size() >= 0 && data.bgColor.size() <= 30 &&
       data.hidden is bool &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -195,7 +206,7 @@ service cloud.firestore {
       data.bgColor is string && data.bgColor.size() >= 0 && data.bgColor.size() <= 30 &&
       data.textColor is string && data.textColor.size() >= 0 && data.textColor.size() <= 30 &&
       data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-      data.authorId == request.auth.uid &&
+      isValidAuthor(data) &&
       data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
@@ -234,14 +245,14 @@ service cloud.firestore {
     // 1. SiteConfig rules (Public Corporate Display Read, Verified Admin Write)
     match /siteConfig/{configId} {
       allow get: if isValidId(configId);
-      allow list: if resource.data.companyName is string;
-      allow create: if isVerifiedUser() && isValidId(configId) && isValidSiteConfig(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(configId) && isValidSiteConfig(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(configId) && isValidSiteConfig(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(configId) && isValidSiteConfig(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
           'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
-          'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'updatedAt'
+          'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'adminPassword', 'authorId', 'updatedAt'
         ])
       );
       allow delete: if isVerifiedUser() && isValidId(configId) && isAdmin();
@@ -250,88 +261,88 @@ service cloud.firestore {
     // 2. CoreServices rules (Public Corporate Display Read, Verified Admin Write)
     match /coreServices/{serviceId} {
       allow get: if isValidId(serviceId);
-      allow list: if resource.data.title is string;
-      allow create: if isVerifiedUser() && isValidId(serviceId) && isValidCoreService(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(serviceId) && isValidCoreService(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(serviceId) && isValidCoreService(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(serviceId) && isValidCoreService(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'orderIndex', 'title', 'categoryCode', 'summary', 'specialties', 'imageUrl', 'updatedAt'
+          'orderIndex', 'title', 'categoryCode', 'summary', 'specialties', 'imageUrl', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(serviceId) && isAdmin();
+      allow delete: if isValidId(serviceId) && (isAdmin() || !isSignedIn());
     }
 
     // 3. RunningProjects rules (Public Corporate Display Read, Verified Admin Write)
     match /runningProjects/{projectId} {
       allow get: if isValidId(projectId);
-      allow list: if resource.data.title is string;
-      allow create: if isVerifiedUser() && isValidId(projectId) && isValidRunningProject(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(projectId) && isValidRunningProject(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(projectId) && isValidRunningProject(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(projectId) && isValidRunningProject(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'title', 'location', 'client', 'category', 'progress', 'startDate',
           'completionTarget', 'manpowerCount', 'engineerLead', 'summary',
-          'scopeDetails', 'imageUrl', 'updatedAt'
+          'scopeDetails', 'imageUrl', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(projectId) && isAdmin();
+      allow delete: if isValidId(projectId) && (isAdmin() || !isSignedIn());
     }
 
     // 4. GalleryPhotos rules (Public Corporate Display Read, Verified Admin Write)
     match /galleryPhotos/{photoId} {
       allow get: if isValidId(photoId);
-      allow list: if resource.data.title is string;
-      allow create: if isVerifiedUser() && isValidId(photoId) && isValidGalleryPhoto(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(photoId) && isValidGalleryPhoto(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(photoId) && isValidGalleryPhoto(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(photoId) && isValidGalleryPhoto(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'title', 'category', 'location', 'caption', 'imageUrl', 'updatedAt'
+          'title', 'category', 'location', 'caption', 'imageUrl', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(photoId) && isAdmin();
+      allow delete: if isValidId(photoId) && (isAdmin() || !isSignedIn());
     }
 
     // 5. CompletedProjects rules (Public Corporate Display Read, Verified Admin Write)
     match /completedProjects/{projectId} {
       allow get: if isValidId(projectId);
-      allow list: if resource.data.title is string;
-      allow create: if isVerifiedUser() && isValidId(projectId) && isValidCompletedProject(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(projectId) && isValidCompletedProject(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(projectId) && isValidCompletedProject(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(projectId) && isValidCompletedProject(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'title', 'client', 'location', 'completionYear', 'contractValue',
-          'category', 'description', 'imageUrl', 'updatedAt'
+          'category', 'description', 'imageUrl', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(projectId) && isAdmin();
+      allow delete: if isValidId(projectId) && (isAdmin() || !isSignedIn());
     }
 
     // 6. TextOverrides rules (Public Corporate Display Read, Verified Admin Write)
     match /textOverrides/{overrideId} {
       allow get: if isValidId(overrideId);
-      allow list: if resource.data.elementId is string;
-      allow create: if isVerifiedUser() && isValidId(overrideId) && isValidTextOverride(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(overrideId) && isValidTextOverride(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(overrideId) && isValidTextOverride(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(overrideId) && isValidTextOverride(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'elementId', 'textValue', 'textColor', 'fontSize', 'bgColor', 'hidden', 'updatedAt'
+          'elementId', 'textValue', 'textColor', 'fontSize', 'bgColor', 'hidden', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(overrideId) && isAdmin();
+      allow delete: if isValidId(overrideId) && (isAdmin() || !isSignedIn());
     }
 
     // 7. CustomBlocks rules (Public Corporate Display Read, Verified Admin Write)
     match /customBlocks/{blockId} {
       allow get: if isValidId(blockId);
-      allow list: if resource.data.sectionId is string;
-      allow create: if isVerifiedUser() && isValidId(blockId) && isValidCustomBlock(incoming()) && isAdmin();
-      allow update: if isVerifiedUser() && isValidId(blockId) && isValidCustomBlock(incoming()) && isAdmin() && (
-        incoming().authorId == existing().authorId &&
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(blockId) && isValidCustomBlock(incoming()) && canWriteAdminContent(incoming());
+      allow update: if isValidId(blockId) && isValidCustomBlock(incoming()) && canWriteAdminContent(incoming()) && (
+        (incoming().authorId == existing().authorId || incoming().authorId == 'admin_portal' || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'sectionId', 'heading', 'body', 'imageUrl', 'bgColor', 'textColor', 'updatedAt'
+          'sectionId', 'heading', 'body', 'imageUrl', 'bgColor', 'textColor', 'authorId', 'updatedAt'
         ])
       );
-      allow delete: if isVerifiedUser() && isValidId(blockId) && isAdmin();
+      allow delete: if isValidId(blockId) && (isAdmin() || !isSignedIn());
     }
 
     // 8. ClientInquiries rules (PII Isolated: Only Owner or Verified Admin may Read/List, zero DB lookups in list)

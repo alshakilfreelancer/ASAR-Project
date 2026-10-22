@@ -357,7 +357,7 @@ export function getFallbackSvgForCategory(
 export function getSafeImageUrl(
   url?: string | null,
   category = 'Civil Works',
-  title = 'Al Sahab Al Rashid Trad. Con. LLC',
+  title = 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C',
   location = 'Muscat, Oman'
 ): string {
   if (url && (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://'))) {
@@ -370,10 +370,9 @@ export function getSafeImageUrl(
 }
 
 /**
- * High-Clarity Corporate Emblem Logo for "Al Sahab Al Rashid Trad. Con. LLC" (ASAR)
- * Designed for high-impact enlargement (viewBox 240 240), crisp geometric contrast,
- * rich royal navy (#1e3a8a) & industrial gold/orange (#f97316), and clear ASAR brand lettering.
- * Can be replaced anytime with 1 click in Admin Edit Mode.
+ * High-Clarity Corporate Emblem Logo for "Al Sahab Al Rashid Trad. & Cont. Co L.L.C" (ASAR)
+ * Uses the authentic uploaded ASAR Maltese cross emblem (/assets/aistudio/official-company-logo.jpg)
+ * with a vector SVG backup generator if needed.
  */
 export function createCompanyLogoDataUri(): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
@@ -433,19 +432,21 @@ export function createCompanyLogoDataUri(): string {
     <rect x="32" y="158" width="176" height="38" rx="8" fill="url(#asarGoldGrad)" />
     <text x="120" y="184" text-anchor="middle" font-family="'Outfit', 'Public Sans', system-ui, sans-serif" font-size="22" font-weight="900" letter-spacing="4" fill="#ffffff">ASAR</text>
 
-    <!-- Sub-label: TRAD. CON. LLC -->
-    <text x="120" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="800" letter-spacing="2.5" fill="#e2e8f0">TRAD. CON. LLC · OMAN</text>
+    <!-- Sub-label: TRAD. CONT. CO LLL -->
+    <text x="120" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8.5" font-weight="800" letter-spacing="2" fill="#e2e8f0">TRAD. CONT. CO LLL · OMAN</text>
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-export const DEFAULT_COMPANY_LOGO_URI = createCompanyLogoDataUri();
+export const DEFAULT_COMPANY_LOGO_URI = '/assets/aistudio/official-company-logo.jpg';
 
 /**
- * Authentic User Construction Site Photographs Catalog (29 Uploaded Assets in /assets/aistudio/...)
+ * Authentic User Construction Site Photographs Catalog (30 Uploaded Assets in /assets/aistudio/...)
  * Real EPC project sites executed across the Sultanate of Oman.
  */
 export const AUTHENTIC_USER_PHOTOS = {
+  // Official Company Logo
+  officialCompanyLogo: '/assets/aistudio/official-company-logo.jpg',
   // Heavy Earthworks & Slope Stabilization
   excavatorFoundation: '/assets/aistudio/47258819_108261766879124_5229005254179160064_n_2bcd4c74.webp',
   slopePavingStabilization: '/assets/aistudio/86183463_222128415492458_2074318476385714176_n_df01d383.webp',
@@ -500,6 +501,13 @@ export const AUTHENTIC_PHOTO_BANK_ITEMS: {
   tag: string;
   url: string;
 }[] = [
+  {
+    id: 'photo-bank-logo',
+    title: 'Official ASAR Maltese Cross Emblem Logo',
+    category: 'Brand Logo',
+    tag: 'Official Logo',
+    url: AUTHENTIC_USER_PHOTOS.officialCompanyLogo,
+  },
   {
     id: 'photo-bank-1',
     title: 'Reinforced Concrete Superstructure Skeleton',
@@ -707,6 +715,11 @@ export const AUTHENTIC_PHOTO_BANK_ITEMS: {
 
 export const PRESET_ENGINEERING_IMAGES: { label: string; scene: EngineeringSceneType; url: string }[] = [
   {
+    label: 'Official: ASAR Maltese Cross Company Logo',
+    scene: 'port',
+    url: AUTHENTIC_USER_PHOTOS.officialCompanyLogo,
+  },
+  {
     label: 'Authentic: RC Superstructure Skeleton',
     scene: 'civil',
     url: AUTHENTIC_USER_PHOTOS.buildingSuperstructureSkeleton,
@@ -755,11 +768,6 @@ export const PRESET_ENGINEERING_IMAGES: { label: string; scene: EngineeringScene
     label: 'Authentic: Slipform Cylindrical Silos',
     scene: 'civil',
     url: AUTHENTIC_USER_PHOTOS.siloSlipformConstruction,
-  },
-  {
-    label: 'High-Clarity ASAR Corporate Logo',
-    scene: 'port',
-    url: DEFAULT_COMPANY_LOGO_URI,
   },
 ];
 
@@ -823,18 +831,18 @@ export const DEFAULT_CORE_VALUES: CoreValueItem[] = [
 ];
 
 export const DEFAULT_SITE_CONFIG: SiteConfigData = {
-  companyName: 'Al Sahab Al Rashid Trad. Con. LLC',
+  companyName: 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C',
   companyLogoUrl: DEFAULT_COMPANY_LOGO_URI,
   tagline: 'Reliable Construction, EPC Contracting & Manpower Solutions',
   heroSubtext:
     'Delivering civil engineering infrastructure, heavy earthworks, mechanical & electrical installations, pipeline structures, and certified technical workforce deployments across the Sultanate of Oman.',
-  officeAddress: 'Al Sahab Al Rashid Trad. Con. LLC Head Office, Muscat, Sultanate of Oman (wwwasar.com)',
+  officeAddress: 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C Head Office, Muscat, Sultanate of Oman (wwwasar.com)',
   officeCoordinates: '23.5880° N · 58.3829° E',
   officeMapLink: OFFICIAL_GOOGLE_MAPS_LINK,
-  officePhone: '+968 2459 0800 / +968 9932 4510',
+  officePhone: '+968 9570 6749',
   officeEmail: 'info@wwwasar.com',
   aboutBackground:
-    'Al Sahab Al Rashid Trad. Con. LLC (wwwasar.com) is an established Omani Engineering, Procurement, and Construction (EPC) and technical manpower contracting enterprise headquartered in Muscat, Sultanate of Oman. Built on rigorous HSE governance, engineering precision, and rapid site mobilization, our company partners with ministries, petrochemical operators, port authorities, and tier-one infrastructure developers to execute complex civil, earthwork, mechanical, electrical, and pipeline packages on schedule and within specification.',
+    'Al Sahab Al Rashid Trad. & Cont. Co L.L.C (wwwasar.com) is an established Omani Engineering, Procurement, and Construction (EPC) and technical manpower contracting enterprise headquartered in Muscat, Sultanate of Oman. Built on rigorous HSE governance, engineering precision, and rapid site mobilization, our company partners with ministries, petrochemical operators, port authorities, and tier-one infrastructure developers to execute complex civil, earthwork, mechanical, electrical, and pipeline packages on schedule and within specification.',
   ourAim:
     'To serve as the Sultanate of Oman’s most dependable turnkey construction and certified technical manpower partner, consistently achieving zero Lost Time Injury (LTI) milestones and first-time quality handovers on every site.',
   ourVision:
@@ -844,7 +852,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfigData = {
   primaryNavy: '#1e3a8a',
   accentOrange: '#f97316',
   headingScale: 'standard',
-  authorId: 'system_seed',
+  authorId: 'admin_portal',
   adminPassword: 'alsahab2026',
 };
 

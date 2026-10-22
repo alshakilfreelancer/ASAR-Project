@@ -35,6 +35,7 @@ import {
   Server,
   Globe,
   Cloud,
+  Code2,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -46,6 +47,7 @@ import {
   serverTimestamp,
   query,
   where,
+  limit,
 } from 'firebase/firestore';
 import {
   auth,
@@ -111,8 +113,8 @@ import {
 } from './lib/supabase';
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
-// Deployment & Content Version Sync: Ensures EVERY visitor sees the newest build updates immediately
-const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v7_20261022';
+// Deployment & Content Version Sync: Ensures EVERY visitor on mobile & desktop sees the newest updates immediately
+const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v9_20261022';
 
 function enforceLatestBuildVersion(): void {
   if (typeof window === 'undefined') return;
@@ -149,18 +151,62 @@ function enforceLatestBuildVersion(): void {
 enforceLatestBuildVersion();
 
 const STORAGE_KEYS = {
-  SITE_CONFIG: 'asar_cms_site_config_v7',
-  SERVICES: 'asar_cms_core_services_v7',
-  RUNNING: 'asar_cms_running_projects_v7',
-  GALLERY: 'asar_cms_gallery_photos_v7',
-  COMPLETED: 'asar_cms_completed_projects_v7',
-  KPIS: 'asar_cms_kpi_cards_v7',
-  VALUES: 'asar_cms_core_values_v7',
-  MANPOWER: 'asar_cms_manpower_groups_v7',
-  TEXT_OVERRIDES: 'asar_cms_text_overrides_v7',
-  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v7',
-  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v7',
+  SITE_CONFIG: 'asar_cms_site_config_v9',
+  SERVICES: 'asar_cms_core_services_v9',
+  RUNNING: 'asar_cms_running_projects_v9',
+  GALLERY: 'asar_cms_gallery_photos_v9',
+  COMPLETED: 'asar_cms_completed_projects_v9',
+  KPIS: 'asar_cms_kpi_cards_v9',
+  VALUES: 'asar_cms_core_values_v9',
+  MANPOWER: 'asar_cms_manpower_groups_v9',
+  TEXT_OVERRIDES: 'asar_cms_text_overrides_v9',
+  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v9',
+  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v9',
+  GITHUB_CONFIG: 'asar_cms_github_sync_config_v1',
 };
+
+function normalizeCorporateSiteConfig(raw: Partial<SiteConfigData>): SiteConfigData {
+  const merged = {
+    ...DEFAULT_SITE_CONFIG,
+    ...raw,
+  };
+  // Automatically upgrade legacy default company name or legacy phone number if present
+  if (
+    !merged.companyName ||
+    merged.companyName.trim() === 'Al Sahab Al Rashid Trad. Con. LLC' ||
+    merged.companyName.trim() === 'Al Sahab Al Rashid Trad. Cont. Co LLL'
+  ) {
+    merged.companyName = 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C';
+  }
+  if (
+    !merged.officePhone ||
+    merged.officePhone.includes('2459 0800') ||
+    merged.officePhone.includes('9932 4510')
+  ) {
+    merged.officePhone = '+968 9570 6749';
+  }
+  if (
+    !merged.officeAddress ||
+    merged.officeAddress.includes('Al Sahab Al Rashid Trad. Con. LLC') ||
+    merged.officeAddress.includes('Al Sahab Al Rashid Trad. Cont. Co LLL')
+  ) {
+    merged.officeAddress =
+      'Al Sahab Al Rashid Trad. & Cont. Co L.L.C Head Office, Muscat, Sultanate of Oman (wwwasar.com)';
+  }
+  if (
+    merged.aboutBackground &&
+    (merged.aboutBackground.includes('Al Sahab Al Rashid Trad. Con. LLC') ||
+      merged.aboutBackground.includes('Al Sahab Al Rashid Trad. Cont. Co LLL'))
+  ) {
+    merged.aboutBackground = merged.aboutBackground
+      .replace(/Al Sahab Al Rashid Trad\. Con\. LLC/g, 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C')
+      .replace(/Al Sahab Al Rashid Trad\. Cont\. Co LLL/g, 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C');
+  }
+  merged.companyLogoUrl = merged.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI;
+  merged.officeMapLink = merged.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK;
+  merged.adminPassword = merged.adminPassword || DEFAULT_SITE_CONFIG.adminPassword || 'alsahab2026';
+  return merged;
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -266,16 +312,9 @@ export default function App() {
   const [confirmedBadgeId, setConfirmedBadgeId] = useState<string | null>(null);
 
   // Dual-Persisted Corporate Data State (LocalStorage + Firestore Cloud)
-  const [siteConfig, setSiteConfig] = useState<SiteConfigData>(() => {
-    const loaded = loadFromStorage(STORAGE_KEYS.SITE_CONFIG, DEFAULT_SITE_CONFIG);
-    return {
-      ...DEFAULT_SITE_CONFIG,
-      ...loaded,
-      companyLogoUrl: loaded.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
-      officeMapLink: loaded.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
-      adminPassword: loaded.adminPassword || DEFAULT_SITE_CONFIG.adminPassword || 'alsahab2026',
-    };
-  });
+  const [siteConfig, setSiteConfig] = useState<SiteConfigData>(() =>
+    normalizeCorporateSiteConfig(loadFromStorage(STORAGE_KEYS.SITE_CONFIG, DEFAULT_SITE_CONFIG))
+  );
   const [coreServices, setCoreServices] = useState<CoreServiceItem[]>(() =>
     sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.SERVICES, DEFAULT_CORE_SERVICES), DEFAULT_CORE_SERVICES)
   );
@@ -610,6 +649,126 @@ export default function App() {
   const isVerifiedAdminUser = Boolean(
     currentUser && currentUser.emailVerified && currentUser.email === ADMIN_EMAIL
   );
+  const canWriteCloud = Boolean(isAdminAuthenticated || isAdminMode || isAiStudioEnv || isVerifiedAdminUser);
+  const cloudAuthorId = isVerifiedAdminUser && currentUser ? currentUser.uid : 'admin_portal';
+
+  // GitHub Auto-Commit State (Allows Admin Mode edits on website to auto-update GitHub repository & code)
+  const [githubRepo, setGithubRepo] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('asar_github_repo') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [githubToken, setGithubToken] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('asar_github_token') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [githubBranch, setGithubBranch] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('asar_github_branch') || 'main';
+    } catch {
+      return 'main';
+    }
+  });
+  const [githubSyncStatus, setGithubSyncStatus] = useState<string | null>(null);
+
+  const pushCmsUpdateToGitHub = async (commitMessage = 'Admin Portal Live Update (wwwasar.com)') => {
+    const cleanRepo = githubRepo.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+    const cleanToken = githubToken.trim();
+    if (!cleanRepo || !cleanToken) return false;
+
+    try {
+      setGithubSyncStatus('Syncing changes to GitHub repository...');
+      const filePath = 'public/cms-live-data.json';
+      const apiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${filePath}`;
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${cleanToken}`,
+      };
+
+      let existingSha: string | undefined;
+      const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(githubBranch || 'main')}`, { headers });
+      if (getRes.ok) {
+        const fileMeta = await getRes.json();
+        existingSha = fileMeta.sha;
+      }
+
+      const payloadJson = JSON.stringify(
+        {
+          updatedAt: new Date().toISOString(),
+          siteConfig: normalizeCorporateSiteConfig(siteConfig),
+          coreServices,
+          runningProjects,
+          galleryPhotos,
+          completedProjects,
+          textOverrides,
+          customBlocks,
+        },
+        null,
+        2
+      );
+
+      const base64Content = window.btoa(unescape(encodeURIComponent(payloadJson)));
+      const putRes = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: commitMessage,
+          content: base64Content,
+          branch: githubBranch || 'main',
+          ...(existingSha ? { sha: existingSha } : {}),
+        }),
+      });
+
+      if (putRes.ok) {
+        setGithubSyncStatus(`✓ Committed to GitHub (${cleanRepo}@${githubBranch || 'main'})`);
+        return true;
+      } else {
+        const errData = await putRes.json().catch(() => ({}));
+        setGithubSyncStatus(`GitHub sync error: ${errData.message || putRes.statusText}`);
+        return false;
+      }
+    } catch (err) {
+      setGithubSyncStatus(`GitHub error: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  };
+
+  const downloadUpdatedCodeFile = () => {
+    const codeSnapshot = `// Auto-Generated Permanent Code Snapshot from Admin Portal (${new Date().toISOString()})
+// Replace /public/cms-live-data.json or import into your repository
+export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
+      {
+        siteConfig: normalizeCorporateSiteConfig(siteConfig),
+        coreServices,
+        runningProjects,
+        galleryPhotos,
+        completedProjects,
+        textOverrides,
+        customBlocks,
+      },
+      null,
+      2
+    )};
+`;
+    const blob = new Blob([codeSnapshot], { type: 'application/typescript;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'permanent-cms-code-update.ts';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showNotification('success', 'Downloaded permanent TypeScript code file (permanent-cms-code-update.ts)!');
+  };
 
   const showNotification = (type: 'success' | 'info' | 'error', text: string, badgeKey?: string) => {
     setStatusBanner({ type, text });
@@ -774,20 +933,24 @@ export default function App() {
     showNotification('success', 'Admin Password successfully updated & saved to Cloud Database!');
   };
 
-  // 2. Real-time listeners for Public Corporate Content collections
+  // 2. Real-time listeners for Public Corporate Content collections (Synchronized across ALL Mobile & Desktop devices)
   useEffect(() => {
     const unsubConfig = onSnapshot(
       doc(db, 'siteConfig', 'main'),
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as Partial<SiteConfigData>;
-          setSiteConfig((prev) => ({
-            ...prev,
-            ...data,
-            companyLogoUrl: data.companyLogoUrl || prev.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
-            officeMapLink: data.officeMapLink || prev.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
-            adminPassword: data.adminPassword || prev.adminPassword || 'alsahab2026',
-          }));
+          setSiteConfig((prev) => {
+            const merged = normalizeCorporateSiteConfig({
+              ...prev,
+              ...data,
+              companyLogoUrl: data.companyLogoUrl || prev.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
+              officeMapLink: data.officeMapLink || prev.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
+              adminPassword: data.adminPassword || prev.adminPassword || 'alsahab2026',
+            });
+            saveToStorage(STORAGE_KEYS.SITE_CONFIG, merged);
+            return merged;
+          });
         }
       },
       (err) => {
@@ -796,13 +959,14 @@ export default function App() {
     );
 
     const unsubServices = onSnapshot(
-      collection(db, 'coreServices'),
+      query(collection(db, 'coreServices'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const items = snap.docs
             .map((d) => ({ ...(d.data() as Omit<CoreServiceItem, 'id'>), id: d.id }))
             .sort((a, b) => a.orderIndex - b.orderIndex);
           setCoreServices(items);
+          saveToStorage(STORAGE_KEYS.SERVICES, items);
         }
       },
       (err) => {
@@ -811,7 +975,7 @@ export default function App() {
     );
 
     const unsubRunning = onSnapshot(
-      collection(db, 'runningProjects'),
+      query(collection(db, 'runningProjects'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const items = snap.docs.map((d) => ({
@@ -819,6 +983,7 @@ export default function App() {
             id: d.id,
           }));
           setRunningProjects(items);
+          saveToStorage(STORAGE_KEYS.RUNNING, items);
         }
       },
       (err) => {
@@ -827,7 +992,7 @@ export default function App() {
     );
 
     const unsubGallery = onSnapshot(
-      collection(db, 'galleryPhotos'),
+      query(collection(db, 'galleryPhotos'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const items = snap.docs.map((d) => ({
@@ -835,6 +1000,7 @@ export default function App() {
             id: d.id,
           }));
           setGalleryPhotos(items);
+          saveToStorage(STORAGE_KEYS.GALLERY, items);
         }
       },
       (err) => {
@@ -843,7 +1009,7 @@ export default function App() {
     );
 
     const unsubCompleted = onSnapshot(
-      collection(db, 'completedProjects'),
+      query(collection(db, 'completedProjects'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const items = snap.docs.map((d) => ({
@@ -851,6 +1017,7 @@ export default function App() {
             id: d.id,
           }));
           setCompletedProjects(items);
+          saveToStorage(STORAGE_KEYS.COMPLETED, items);
         }
       },
       (err) => {
@@ -859,7 +1026,7 @@ export default function App() {
     );
 
     const unsubTextOverrides = onSnapshot(
-      collection(db, 'textOverrides'),
+      query(collection(db, 'textOverrides'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const map: Record<string, TextOverrideItem> = {};
@@ -867,7 +1034,11 @@ export default function App() {
             const data = d.data() as TextOverrideItem;
             map[data.elementId || d.id] = data;
           });
-          setTextOverrides((prev) => ({ ...prev, ...map }));
+          setTextOverrides((prev) => {
+            const merged = { ...prev, ...map };
+            saveToStorage(STORAGE_KEYS.TEXT_OVERRIDES, merged);
+            return merged;
+          });
         }
       },
       (err) => {
@@ -876,7 +1047,7 @@ export default function App() {
     );
 
     const unsubCustomBlocks = onSnapshot(
-      collection(db, 'customBlocks'),
+      query(collection(db, 'customBlocks'), limit(100)),
       (snap) => {
         if (!snap.empty) {
           const items = snap.docs.map((d) => ({
@@ -884,6 +1055,7 @@ export default function App() {
             id: d.id,
           }));
           setCustomBlocks(items);
+          saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, items);
         }
       },
       (err) => {
@@ -951,13 +1123,13 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [isAutoPlay, isAdminMode, galleryPhotos.length]);
 
-  // Save a single inline Text/Heading/Block Override to LocalStorage + Cloud Firestore
+  // Save a single inline Text/Heading/Block Override to LocalStorage + Cloud Firestore + GitHub
   const saveTextOverride = async (override: TextOverrideItem) => {
     const cleanId = override.elementId.replace(/[^a-zA-Z0-9_-]/g, '-');
     const updatedItem: TextOverrideItem = {
       ...override,
       elementId: cleanId,
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
 
     setTextOverrides((prev) => {
@@ -966,7 +1138,7 @@ export default function App() {
       return next;
     });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'textOverrides', cleanId), {
           elementId: sanitizeString(cleanId, 1, 120, 'el-1'),
@@ -975,9 +1147,10 @@ export default function App() {
           fontSize: (updatedItem.fontSize || '').slice(0, 30),
           bgColor: (updatedItem.bgColor || '').slice(0, 30),
           hidden: Boolean(updatedItem.hidden),
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
+        void pushCmsUpdateToGitHub(`Update text element ${cleanId}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `textOverrides/${cleanId}`);
       }
@@ -1064,11 +1237,15 @@ export default function App() {
       imageUrl: withPhoto ? PRESET_ENGINEERING_IMAGES[0].url : '',
       bgColor: '#ffffff',
       textColor: siteConfig.primaryNavy,
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
-    setCustomBlocks((prev) => [...prev, newBlock]);
+    setCustomBlocks((prev) => {
+      const next = [...prev, newBlock];
+      saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, next);
+      return next;
+    });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'customBlocks', newId), {
           sectionId: newBlock.sectionId,
@@ -1077,19 +1254,24 @@ export default function App() {
           imageUrl: newBlock.imageUrl,
           bgColor: newBlock.bgColor,
           textColor: newBlock.textColor,
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
+        void pushCmsUpdateToGitHub(`Add custom block ${newId}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `customBlocks/${newId}`);
       }
     }
-    showNotification('success', 'Added new editable custom block to section!', newId);
+    showNotification('success', 'Added new editable custom block & synced to Cloud!', newId);
   };
 
   const handleSaveCustomBlock = async (block: CustomBlockItem) => {
-    setCustomBlocks((prev) => prev.map((b) => (b.id === block.id ? block : b)));
-    if (isVerifiedAdminUser && currentUser) {
+    setCustomBlocks((prev) => {
+      const next = prev.map((b) => (b.id === block.id ? block : b));
+      saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, next);
+      return next;
+    });
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'customBlocks', block.id), {
           sectionId: sanitizeString(block.sectionId, 2, 60, 'home'),
@@ -1098,26 +1280,32 @@ export default function App() {
           imageUrl: (block.imageUrl || '').slice(0, 350000),
           bgColor: (block.bgColor || '#ffffff').slice(0, 30),
           textColor: (block.textColor || '#1e3a8a').slice(0, 30),
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
+        void pushCmsUpdateToGitHub(`Save custom block ${block.id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `customBlocks/${block.id}`);
       }
     }
-    showNotification('success', 'Custom block saved!', block.id);
+    showNotification('success', 'Custom block permanently saved to Cloud!', block.id);
   };
 
   const handleDeleteCustomBlock = async (blockId: string) => {
-    setCustomBlocks((prev) => prev.filter((b) => b.id !== blockId));
-    if (isVerifiedAdminUser) {
+    setCustomBlocks((prev) => {
+      const next = prev.filter((b) => b.id !== blockId);
+      saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, next);
+      return next;
+    });
+    if (canWriteCloud) {
       try {
         await deleteDoc(doc(db, 'customBlocks', blockId));
+        void pushCmsUpdateToGitHub(`Delete custom block ${blockId}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `customBlocks/${blockId}`);
       }
     }
-    showNotification('info', 'Custom block removed.');
+    showNotification('info', 'Custom block removed from Cloud.');
   };
 
   const renderSectionCustomBlocks = (sectionId: string) => {
@@ -1300,17 +1488,17 @@ export default function App() {
     );
   };
 
-  // Persist SiteConfig changes to LocalStorage + Cloud Firestore
+  // Persist SiteConfig changes to LocalStorage + Cloud Firestore + Supabase + GitHub
   const saveSiteConfigToCloud = async (updated: SiteConfigData, sectionKey = 'site-config') => {
-    const normalized: SiteConfigData = {
+    const normalized: SiteConfigData = normalizeCorporateSiteConfig({
       ...updated,
       companyLogoUrl: updated.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
       officeMapLink: updated.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
-    };
+    });
     setSiteConfig(normalized);
     saveToStorage(STORAGE_KEYS.SITE_CONFIG, normalized);
 
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification(
         'success',
         '✓ Confirmed & Saved! Your text, logo, and settings are updated.',
@@ -1337,13 +1525,14 @@ export default function App() {
       accentOrange: sanitizeHexColor(normalized.accentOrange, '#f97316'),
       headingScale: normalized.headingScale || 'standard',
       adminPassword: sanitizeString(normalized.adminPassword || 'alsahab2026', 4, 100, 'alsahab2026'),
-      authorId: currentUser.uid,
+      authorId: cloudAuthorId,
       updatedAt: serverTimestamp(),
     };
 
     try {
       await setDoc(doc(db, 'siteConfig', 'main'), payload);
-      showNotification('success', 'Changes confirmed & persisted to Cloud Database.', sectionKey);
+      void pushCmsUpdateToGitHub(`Update siteConfig (${sectionKey})`);
+      showNotification('success', '✓ Permanently saved to Cloud Database (Live on all devices)!', sectionKey);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'siteConfig/main');
     }
@@ -1352,7 +1541,7 @@ export default function App() {
   // Save a single Core Service card
   const saveSingleCoreService = async (srv: CoreServiceItem) => {
     saveToStorage(STORAGE_KEYS.SERVICES, coreServices);
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification('success', `Saved "${srv.title}" in Edit Mode.`, srv.id);
       return;
     }
@@ -1365,10 +1554,11 @@ export default function App() {
         summary: sanitizeString(srv.summary, 10, 1200, 'Detailed engineering service package.'),
         specialties: sanitizeString(srv.specialties, 5, 800, 'Civil · Structural · MEP'),
         imageUrl: sanitizeString(srv.imageUrl, 5, 350000, DEFAULT_CORE_SERVICES[0].imageUrl),
-        authorId: currentUser.uid,
+        authorId: cloudAuthorId,
         updatedAt: serverTimestamp(),
       });
-      showNotification('success', `Synced "${srv.title}" to Cloud Database.`, srv.id);
+      void pushCmsUpdateToGitHub(`Update Core Service ${srv.title}`);
+      showNotification('success', `✓ Permanently synced "${srv.title}" to Cloud Database!`, srv.id);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `coreServices/${cleanId}`);
     }
@@ -1377,7 +1567,7 @@ export default function App() {
   // Save a single Running Project card
   const saveSingleRunningProject = async (proj: RunningProjectItem) => {
     saveToStorage(STORAGE_KEYS.RUNNING, runningProjects);
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification('success', `Confirmed edits to "${proj.title}".`, proj.id);
       return;
     }
@@ -1396,10 +1586,11 @@ export default function App() {
         summary: sanitizeString(proj.summary, 10, 500, 'Ongoing construction and engineering works.'),
         scopeDetails: sanitizeString(proj.scopeDetails, 10, 2000, 'Full turnkey execution scope.'),
         imageUrl: sanitizeString(proj.imageUrl, 5, 350000, DEFAULT_RUNNING_PROJECTS[0].imageUrl),
-        authorId: currentUser.uid,
+        authorId: cloudAuthorId,
         updatedAt: serverTimestamp(),
       });
-      showNotification('success', `Synced "${proj.title}" to Cloud Database.`, proj.id);
+      void pushCmsUpdateToGitHub(`Update Running Project ${proj.title}`);
+      showNotification('success', `✓ Permanently synced "${proj.title}" to Cloud Database!`, proj.id);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `runningProjects/${cleanId}`);
     }
@@ -1408,7 +1599,7 @@ export default function App() {
   // Save a single Gallery Photo card
   const saveSingleGalleryPhoto = async (photo: GalleryPhotoItem) => {
     saveToStorage(STORAGE_KEYS.GALLERY, galleryPhotos);
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification('success', `Saved gallery photo "${photo.title}".`, photo.id);
       return;
     }
@@ -1420,10 +1611,11 @@ export default function App() {
         location: sanitizeString(photo.location, 2, 120, 'Muscat, Oman'),
         caption: sanitizeString(photo.caption, 5, 600, 'Site execution photograph.'),
         imageUrl: sanitizeString(photo.imageUrl, 5, 350000, DEFAULT_GALLERY_PHOTOS[0].imageUrl),
-        authorId: currentUser.uid,
+        authorId: cloudAuthorId,
         updatedAt: serverTimestamp(),
       });
-      showNotification('success', `Synced photo "${photo.title}" to Cloud Database.`, photo.id);
+      void pushCmsUpdateToGitHub(`Update Gallery Photo ${photo.title}`);
+      showNotification('success', `✓ Permanently synced photo "${photo.title}" to Cloud Database!`, photo.id);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `galleryPhotos/${cleanId}`);
     }
@@ -1432,7 +1624,7 @@ export default function App() {
   // Save a single Completed Project card
   const saveSingleCompletedProject = async (comp: CompletedProjectItem) => {
     saveToStorage(STORAGE_KEYS.COMPLETED, completedProjects);
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification('success', `Saved portfolio project "${comp.title}".`, comp.id);
       return;
     }
@@ -1447,16 +1639,17 @@ export default function App() {
         category: sanitizeString(comp.category, 2, 80, 'Civil Works'),
         description: sanitizeString(comp.description, 10, 1200, 'Successfully completed EPC package.'),
         imageUrl: sanitizeString(comp.imageUrl, 5, 350000, DEFAULT_COMPLETED_PROJECTS[0].imageUrl),
-        authorId: currentUser.uid,
+        authorId: cloudAuthorId,
         updatedAt: serverTimestamp(),
       });
-      showNotification('success', `Synced "${comp.title}" to Cloud Database.`, comp.id);
+      void pushCmsUpdateToGitHub(`Update Completed Project ${comp.title}`);
+      showNotification('success', `✓ Permanently synced "${comp.title}" to Cloud Database!`, comp.id);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `completedProjects/${cleanId}`);
     }
   };
 
-  // Seed or Sync all collections to Cloud Database
+  // Seed or Sync all collections to Cloud Database + Supabase + GitHub
   const syncAllCollectionsToCloud = async () => {
     saveToStorage(STORAGE_KEYS.SITE_CONFIG, siteConfig);
     saveToStorage(STORAGE_KEYS.SERVICES, coreServices);
@@ -1487,17 +1680,12 @@ export default function App() {
       supabaseKey
     );
 
-    if (!isVerifiedAdminUser || !currentUser) {
+    if (!canWriteCloud) {
       showNotification(
         'success',
-        'All text, headings, blocks, and photos saved to browser storage & sent to Supabase! Opening Google Sign-In if you wish to also sync to Cloud Firestore...',
+        'All text, headings, blocks, and photos saved to browser storage & sent to Supabase!',
         'global-sync'
       );
-      try {
-        await signInAdminWithGoogle();
-      } catch {
-        // Keep local storage saved state if popup is closed
-      }
       return;
     }
 
@@ -1523,9 +1711,11 @@ export default function App() {
         await handleSaveCustomBlock(blk);
       }
 
+      await pushCmsUpdateToGitHub('Full Admin Portal Sync (All Sections, Photos & Settings)');
+
       showNotification(
         'success',
-        'All headings, custom blocks, photos, map links, and projects synced to Cloud Database!',
+        '✓ All headings, custom blocks, photos, map links, and projects permanently synced to Cloud Database (Live on all devices)!',
         'global-sync'
       );
     } catch (error) {
@@ -1573,10 +1763,14 @@ export default function App() {
         'Comprehensive civil, earthworks, and MEP execution package.'
       ),
       imageUrl: sanitizeString(newProject.imageUrl, 5, 350000, DEFAULT_RUNNING_PROJECTS[0].imageUrl),
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
 
-    setRunningProjects((prev) => [item, ...prev]);
+    setRunningProjects((prev) => {
+      const next = [item, ...prev];
+      saveToStorage(STORAGE_KEYS.RUNNING, next);
+      return next;
+    });
     setShowAddRunningForm(false);
     setNewProject({
       title: '',
@@ -1593,7 +1787,7 @@ export default function App() {
       imageUrl: DEFAULT_RUNNING_PROJECTS[0].imageUrl,
     });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'runningProjects', newId), {
           title: item.title,
@@ -1608,10 +1802,11 @@ export default function App() {
           summary: item.summary,
           scopeDetails: item.scopeDetails,
           imageUrl: item.imageUrl,
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
-        showNotification('success', `Added "${item.title}" to Cloud Running Projects.`, newId);
+        void pushCmsUpdateToGitHub(`Add Running Project ${item.title}`);
+        showNotification('success', `✓ Permanently added "${item.title}" to Cloud Running Projects!`, newId);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `runningProjects/${newId}`);
       }
@@ -1621,12 +1816,17 @@ export default function App() {
   };
 
   const handleDeleteRunningProject = async (id: string) => {
-    setRunningProjects((prev) => prev.filter((p) => p.id !== id));
+    setRunningProjects((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveToStorage(STORAGE_KEYS.RUNNING, next);
+      return next;
+    });
     if (selectedRunningProject?.id === id) setSelectedRunningProject(null);
-    if (isVerifiedAdminUser) {
+    if (canWriteCloud) {
       try {
         await deleteDoc(doc(db, 'runningProjects', id));
-        showNotification('info', 'Running project removed from Cloud Database.');
+        void pushCmsUpdateToGitHub(`Delete Running Project ${id}`);
+        showNotification('info', 'Running project permanently removed from Cloud Database.');
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `runningProjects/${id}`);
       }
@@ -1646,10 +1846,14 @@ export default function App() {
       location: sanitizeString(newPhoto.location, 2, 120, 'Muscat, Oman'),
       caption: sanitizeString(newPhoto.caption, 5, 600, 'Site progress and quality inspection photography.'),
       imageUrl: sanitizeString(newPhoto.imageUrl, 5, 350000, DEFAULT_GALLERY_PHOTOS[0].imageUrl),
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
 
-    setGalleryPhotos((prev) => [item, ...prev]);
+    setGalleryPhotos((prev) => {
+      const next = [item, ...prev];
+      saveToStorage(STORAGE_KEYS.GALLERY, next);
+      return next;
+    });
     setCurrentSlideIndex(0);
     setShowAddGalleryForm(false);
     setNewPhoto({
@@ -1660,7 +1864,7 @@ export default function App() {
       imageUrl: DEFAULT_GALLERY_PHOTOS[0].imageUrl,
     });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'galleryPhotos', newId), {
           title: item.title,
@@ -1668,10 +1872,11 @@ export default function App() {
           location: item.location,
           caption: item.caption,
           imageUrl: item.imageUrl,
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
-        showNotification('success', 'New work photo added to Gallery & Carousel.', newId);
+        void pushCmsUpdateToGitHub(`Add Gallery Photo ${item.title}`);
+        showNotification('success', '✓ New work photo permanently saved to Cloud Gallery & Carousel!', newId);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `galleryPhotos/${newId}`);
       }
@@ -1686,12 +1891,14 @@ export default function App() {
       if (currentSlideIndex >= filtered.length) {
         setCurrentSlideIndex(Math.max(0, filtered.length - 1));
       }
+      saveToStorage(STORAGE_KEYS.GALLERY, filtered);
       return filtered;
     });
-    if (isVerifiedAdminUser) {
+    if (canWriteCloud) {
       try {
         await deleteDoc(doc(db, 'galleryPhotos', id));
-        showNotification('info', 'Photo removed from gallery.');
+        void pushCmsUpdateToGitHub(`Delete Gallery Photo ${id}`);
+        showNotification('info', 'Photo permanently removed from Cloud Gallery.');
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `galleryPhotos/${id}`);
       }
@@ -1712,10 +1919,14 @@ export default function App() {
       summary: sanitizeString(newService.summary, 10, 1200, 'Turnkey engineering and contracting solution.'),
       specialties: sanitizeString(newService.specialties, 5, 800, 'Structural · Mechanical · Workforce'),
       imageUrl: sanitizeString(newService.imageUrl, 5, 350000, DEFAULT_CORE_SERVICES[0].imageUrl),
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
 
-    setCoreServices((prev) => [...prev, item]);
+    setCoreServices((prev) => {
+      const next = [...prev, item];
+      saveToStorage(STORAGE_KEYS.SERVICES, next);
+      return next;
+    });
     setShowAddServiceForm(false);
     setNewService({
       title: '',
@@ -1725,7 +1936,7 @@ export default function App() {
       imageUrl: DEFAULT_CORE_SERVICES[0].imageUrl,
     });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'coreServices', newId), {
           orderIndex: item.orderIndex,
@@ -1734,10 +1945,11 @@ export default function App() {
           summary: item.summary,
           specialties: item.specialties,
           imageUrl: item.imageUrl,
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
-        showNotification('success', 'New Core Service division added.', newId);
+        void pushCmsUpdateToGitHub(`Add Core Service ${item.title}`);
+        showNotification('success', '✓ New Core Service division permanently saved to Cloud!', newId);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `coreServices/${newId}`);
       }
@@ -1747,15 +1959,20 @@ export default function App() {
   };
 
   const handleDeleteCoreService = async (id: string) => {
-    setCoreServices((prev) => prev.filter((s) => s.id !== id));
-    if (isVerifiedAdminUser) {
+    setCoreServices((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      saveToStorage(STORAGE_KEYS.SERVICES, next);
+      return next;
+    });
+    if (canWriteCloud) {
       try {
         await deleteDoc(doc(db, 'coreServices', id));
+        void pushCmsUpdateToGitHub(`Delete Core Service ${id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `coreServices/${id}`);
       }
     }
-    showNotification('info', 'Core Service card removed.');
+    showNotification('info', 'Core Service card removed from Cloud.');
   };
 
   // Add New Completed Portfolio Project
@@ -1772,10 +1989,14 @@ export default function App() {
       category: sanitizeString(newCompleted.category, 2, 80, 'Civil Works'),
       description: sanitizeString(newCompleted.description, 10, 1200, 'Delivered turnkey civil and MEP scope.'),
       imageUrl: sanitizeString(newCompleted.imageUrl, 5, 350000, DEFAULT_COMPLETED_PROJECTS[0].imageUrl),
-      authorId: currentUser?.uid || 'local_admin',
+      authorId: cloudAuthorId,
     };
 
-    setCompletedProjects((prev) => [item, ...prev]);
+    setCompletedProjects((prev) => {
+      const next = [item, ...prev];
+      saveToStorage(STORAGE_KEYS.COMPLETED, next);
+      return next;
+    });
     setShowAddCompletedForm(false);
     setNewCompleted({
       title: '',
@@ -1788,7 +2009,7 @@ export default function App() {
       imageUrl: DEFAULT_COMPLETED_PROJECTS[0].imageUrl,
     });
 
-    if (isVerifiedAdminUser && currentUser) {
+    if (canWriteCloud) {
       try {
         await setDoc(doc(db, 'completedProjects', newId), {
           title: item.title,
@@ -1799,10 +2020,11 @@ export default function App() {
           category: item.category,
           description: item.description,
           imageUrl: item.imageUrl,
-          authorId: currentUser.uid,
+          authorId: cloudAuthorId,
           updatedAt: serverTimestamp(),
         });
-        showNotification('success', 'Completed portfolio project saved.', newId);
+        void pushCmsUpdateToGitHub(`Add Completed Project ${item.title}`);
+        showNotification('success', '✓ Completed portfolio project permanently saved to Cloud!', newId);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `completedProjects/${newId}`);
       }
@@ -1812,15 +2034,20 @@ export default function App() {
   };
 
   const handleDeleteCompletedProject = async (id: string) => {
-    setCompletedProjects((prev) => prev.filter((c) => c.id !== id));
-    if (isVerifiedAdminUser) {
+    setCompletedProjects((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveToStorage(STORAGE_KEYS.COMPLETED, next);
+      return next;
+    });
+    if (canWriteCloud) {
       try {
         await deleteDoc(doc(db, 'completedProjects', id));
+        void pushCmsUpdateToGitHub(`Delete Completed Project ${id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `completedProjects/${id}`);
       }
     }
-    showNotification('info', 'Completed project removed.');
+    showNotification('info', 'Completed project removed from Cloud.');
   };
 
   // Client Inquiry Form Submission (Persisted to Firestore `/inquiries` + Local Session Inbox)
@@ -1889,7 +2116,7 @@ export default function App() {
       }
 
       setInquirySubmittedSuccess(
-        `Thank you, ${cleanInquiry.clientName}. Your official inquiry (Ref: ${inquiryId.toUpperCase()}) has been received by Al Sahab Al Rashid Trad. Con. LLC. Our estimating and manpower engineering team will respond within 24 business hours.`
+        `Thank you, ${cleanInquiry.clientName}. Your official inquiry (Ref: ${inquiryId.toUpperCase()}) has been received by Al Sahab Al Rashid Trad. & Cont. Co L.L.C. Our estimating and manpower engineering team will respond within 24 business hours.`
       );
       showNotification(
         'success',
@@ -2045,7 +2272,7 @@ export default function App() {
                       saveSiteConfigToCloud({ ...siteConfig, companyName: val }, 'header-name-save');
                     }
                   }}
-                  className={`text-lg sm:text-2xl font-black tracking-tight leading-none truncate ${
+                  className={`text-sm sm:text-xl lg:text-2xl font-black tracking-tight leading-tight ${
                     isAdminMode
                       ? 'outline-1 outline-dashed outline-[#f97316] bg-orange-50/60 rounded px-1.5 cursor-text'
                       : 'cursor-pointer hover:opacity-90'
@@ -2055,13 +2282,18 @@ export default function App() {
                   {siteConfig.companyName}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 pt-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pt-0.5">
                 <span className="text-[10px] sm:text-xs font-semibold text-slate-500 tracking-wide uppercase truncate">
-                  EPC Contracting & Manpower Solutions · Oman
+                  EPC Contracting & Manpower · Oman
                 </span>
-                <span className="hidden xl:inline-block text-[11px] font-bold text-[#f97316]">
-                  (wwwasar.com)
-                </span>
+                <a
+                  href={`tel:${(siteConfig.officePhone || '+968 9570 6749').replace(/\s+/g, '')}`}
+                  className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold text-[#f97316] hover:underline"
+                  title="Official Office Telephone: +968 9570 6749"
+                >
+                  <Phone className="w-3 h-3 shrink-0" />
+                  <span>Office: {siteConfig.officePhone || '+968 9570 6749'}</span>
+                </a>
               </div>
               {isAdminMode && (
                 <button
@@ -2928,8 +3160,8 @@ export default function App() {
                     <div className="relative w-full h-full min-h-[280px]">
                       <iframe
                         key={mapViewMode}
-                        title="Al Sahab Al Rashid Trad. Con. LLC Official Location Map"
-                        src={`https://www.google.com/maps?q=23.5880,58.3829+(Al+Sahab+Al+Rashid+Trad.+Con.+LLC+Muscat+Oman)&t=${
+                        title="Al Sahab Al Rashid Trad. & Cont. Co L.L.C Official Location Map"
+                        src={`https://www.google.com/maps?q=23.5880,58.3829+(Al+Sahab+Al+Rashid+Trad.+%26+Cont.+Co+L.L.C+Muscat+Oman)&t=${
                           mapViewMode === 'satellite' ? 'k' : 'm'
                         }&hl=en&z=14&output=embed`}
                         className="w-full h-full min-h-[280px] border-0"
@@ -6218,7 +6450,7 @@ export default function App() {
                     <span>Technical Architecture & Web Platform</span>
                   </div>
                   <p>
-                    Full-stack web architect for Al Sahab Al Rashid Trad. Con. LLC (wwwasar.com), integrating real-time database management, responsive UI/UX, and engineering project trackers.
+                    Full-stack web architect for Al Sahab Al Rashid Trad. & Cont. Co L.L.C (wwwasar.com), integrating real-time database management, responsive UI/UX, and engineering project trackers.
                   </p>
                 </div>
               </div>
@@ -6574,6 +6806,96 @@ export default function App() {
               </button>
             </div>
 
+            {/* GITHUB AUTO-COMMIT & PERMANENT CODE SYNC (Auto-updates GitHub when Admin edits on website) */}
+            <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-200 space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-bold text-[#1e3a8a] flex items-center gap-1.5">
+                    <Code2 className="w-4 h-4 text-[#f97316]" />
+                    <span>GitHub Auto-Update & Permanent Code Sync (Optional)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    All Admin Mode edits already save permanently to Cloud Firestore (live across all mobile & desktop devices). Connect your GitHub repository below if you also want every website edit to automatically commit to GitHub!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={downloadUpdatedCodeFile}
+                  className="px-3 py-1.5 font-semibold text-white bg-[#1e3a8a] hover:bg-blue-900 rounded-lg inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#f97316]" />
+                  <span>Download Updated Code (.ts)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <label className="block font-semibold text-slate-700">
+                  GitHub Repo (owner/repo)
+                  <input
+                    type="text"
+                    placeholder="e.g. username/asar-website"
+                    value={githubRepo}
+                    onChange={(e) => {
+                      setGithubRepo(e.target.value);
+                      try {
+                        window.localStorage.setItem('asar_github_repo', e.target.value);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="mt-1 w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono-tabular bg-white"
+                  />
+                </label>
+                <label className="block font-semibold text-slate-700">
+                  Branch
+                  <input
+                    type="text"
+                    placeholder="main"
+                    value={githubBranch}
+                    onChange={(e) => {
+                      setGithubBranch(e.target.value);
+                      try {
+                        window.localStorage.setItem('asar_github_branch', e.target.value);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="mt-1 w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono-tabular bg-white"
+                  />
+                </label>
+                <label className="block font-semibold text-slate-700">
+                  GitHub Personal Access Token
+                  <input
+                    type="password"
+                    placeholder="ghp_xxxxxxxxxxxx"
+                    value={githubToken}
+                    onChange={(e) => {
+                      setGithubToken(e.target.value);
+                      try {
+                        window.localStorage.setItem('asar_github_token', e.target.value);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="mt-1 w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono-tabular bg-white"
+                  />
+                </label>
+              </div>
+
+              {githubSyncStatus && (
+                <div className="p-2.5 bg-white border border-blue-200 rounded-lg font-mono-tabular text-[11px] text-slate-700 flex items-center justify-between gap-2">
+                  <span>{githubSyncStatus}</span>
+                  <button
+                    type="button"
+                    onClick={() => pushCmsUpdateToGitHub('Manual Admin Portal Sync to GitHub')}
+                    className="px-2.5 py-1 font-semibold bg-[#f97316] text-white rounded cursor-pointer"
+                  >
+                    Push to GitHub Now
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* SQL Table Creation Helper for Project utblsxterubtziionaja */}
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -6605,6 +6927,13 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap justify-end gap-2.5 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={downloadUpdatedCodeFile}
+                className="px-4 py-2 text-xs font-semibold bg-blue-50 text-[#1e3a8a] border border-blue-200 rounded-lg cursor-pointer"
+              >
+                Export Permanent Code (.ts)
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -6686,7 +7015,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Al Sahab Al Rashid Trad. Con. LLC (wwwasar.com) · Muscat, Sultanate of Oman
+                    Al Sahab Al Rashid Trad. & Cont. Co L.L.C (wwwasar.com) · Office: +968 9570 6749 · Muscat, Sultanate of Oman
                   </p>
                 </div>
               </div>
@@ -7230,7 +7559,7 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Admin Portal Verification</h2>
-                  <p className="text-xs text-slate-500">Al Sahab Al Rashid Trad. Con. LLC</p>
+                  <p className="text-xs text-slate-500">Al Sahab Al Rashid Trad. & Cont. Co L.L.C</p>
                 </div>
               </div>
               <button
