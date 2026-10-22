@@ -54,6 +54,7 @@ export interface SiteConfigData {
   accentOrange: string;
   headingScale: 'standard' | 'compact' | 'large';
   authorId: string;
+  adminPassword?: string;
 }
 
 export interface CoreServiceItem {
@@ -797,6 +798,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfigData = {
   accentOrange: '#f97316',
   headingScale: 'standard',
   authorId: 'system_seed',
+  adminPassword: 'alsahab2026',
 };
 
 export const DEFAULT_CORE_SERVICES: CoreServiceItem[] = [
@@ -1549,10 +1551,17 @@ export function exportStandaloneHtmlFile(
     }
 
     function toggleAdminMode() {
+      if (!isAdmin) {
+        const pass = prompt('Enter Admin Password to unlock website editing:');
+        if (pass !== (STATE.config.adminPassword || 'alsahab2026')) {
+          if (pass !== null) alert('Incorrect Admin Password. Access denied.');
+          return;
+        }
+      }
       isAdmin = !isAdmin;
       document.body.classList.toggle('admin-active', isAdmin);
       const btn = document.getElementById('adminToggleBtn');
-      btn.textContent = isAdmin ? 'Admin Mode: ON (Click any text or photo)' : 'Admin Mode: OFF';
+      btn.textContent = isAdmin ? 'Admin Mode: ON (Click any text or photo)' : 'Admin Login';
       btn.className = isAdmin
         ? 'px-4 py-2 text-xs font-semibold bg-[#f97316] text-white rounded-lg cursor-pointer'
         : 'px-4 py-2 text-xs font-semibold bg-[#1e3a8a] text-white rounded-lg cursor-pointer';

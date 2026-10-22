@@ -23,6 +23,8 @@ import {
   LogIn,
   LogOut,
   Eye,
+  EyeOff,
+  Key,
   RotateCcw,
   Upload,
   Camera,
@@ -155,10 +157,53 @@ interface PhotoEditorTarget {
 }
 
 export default function App() {
-  // Authentication & Admin Edit Mode state
+  // Environment Detection: Google AI Studio preview, dev server, or localhost vs Public Production (Netlify / wwwasar.com)
+  const isAiStudioEnv = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname;
+    return (
+      h.includes('ais-') ||
+      h.includes('run.app') ||
+      h.includes('localhost') ||
+      h === '127.0.0.1' ||
+      window.location.protocol === 'file:'
+    );
+  }, []);
+
+  // Authentication & Admin Edit Mode state:
+  // In Google AI Studio: Admin editing is always authorized.
+  // In Public Production: Requires administrative password or authorized Google login.
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname;
+    if (
+      h.includes('ais-') ||
+      h.includes('run.app') ||
+      h.includes('localhost') ||
+      h === '127.0.0.1' ||
+      window.location.protocol === 'file:'
+    ) {
+      return true;
+    }
+    try {
+      return (
+        window.sessionStorage.getItem('asar_admin_authenticated') === 'true' ||
+        window.localStorage.getItem('asar_admin_authenticated') === 'true'
+      );
+    } catch {
+      return false;
+    }
+  });
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
+  const [adminInputPassword, setAdminInputPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [showPasswordPlaintext, setShowPasswordPlaintext] = useState(false);
+  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
+  const [rememberAdminSession, setRememberAdminSession] = useState(true);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [confirmedBadgeId, setConfirmedBadgeId] = useState<string | null>(null);
 
@@ -170,6 +215,7 @@ export default function App() {
       ...loaded,
       companyLogoUrl: loaded.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
       officeMapLink: loaded.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
+      adminPassword: loaded.adminPassword || DEFAULT_SITE_CONFIG.adminPassword || 'alsahab2026',
     };
   });
   const [coreServices, setCoreServices] = useState<CoreServiceItem[]>(() =>
@@ -450,6 +496,117 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
+  // Synchronize Google Auth with Admin Authentication
+  useEffect(() => {
+    if (currentUser && currentUser.email === ADMIN_EMAIL) {
+      setIsAdminAuthenticated(true);
+      try {
+        window.sessionStorage.setItem('asar_admin_authenticated', 'true');
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentUser]);
+
+  // Keyboard shortcut (Ctrl + Shift + A / Cmd + Shift + A) and Hash listener (#admin)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        if (!isAdminAuthenticated) {
+          setAdminAuthError(null);
+          setAdminInputPassword('');
+          setShowAdminLoginModal(true);
+        } else {
+          const next = !isAdminMode;
+          setIsAdminMode(next);
+          if (!next) setSelectedElementId(null);
+          showNotification(
+            'info',
+            next
+              ? 'Admin Edit Mode activated!'
+              : 'Admin Edit Mode closed.'
+          );
+        }
+      }
+    };
+
+    const handleHashCheck = () => {
+      if (typeof window !== 'undefined' && window.location.hash === '#admin') {
+        if (!isAdminAuthenticated) {
+          setAdminAuthError(null);
+          setAdminInputPassword('');
+          setShowAdminLoginModal(true);
+        } else {
+          setIsAdminMode(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('hashchange', handleHashCheck);
+    if (typeof window !== 'undefined' && window.location.hash === '#admin') {
+      handleHashCheck();
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('hashchange', handleHashCheck);
+    };
+  }, [isAdminAuthenticated, isAdminMode]);
+
+  const handleUnlockAdminWithPassword = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const currentExpected = siteConfig.adminPassword || 'alsahab2026';
+    if (adminInputPassword.trim() === currentExpected.trim()) {
+      setIsAdminAuthenticated(true);
+      setIsAdminMode(true);
+      setAdminAuthError(null);
+      setAdminInputPassword('');
+      setShowAdminLoginModal(false);
+      try {
+        window.sessionStorage.setItem('asar_admin_authenticated', 'true');
+        if (rememberAdminSession) {
+          window.localStorage.setItem('asar_admin_authenticated', 'true');
+        }
+      } catch {
+        // ignore
+      }
+      showNotification('success', 'Admin Mode Unlocked! Welcome back, Admin.');
+    } else {
+      setAdminAuthError('Invalid Admin Password. Please try again or sign in with Google.');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminMode(false);
+    setIsAdminAuthenticated(false);
+    setSelectedElementId(null);
+    try {
+      window.sessionStorage.removeItem('asar_admin_authenticated');
+      window.localStorage.removeItem('asar_admin_authenticated');
+    } catch {
+      // ignore
+    }
+    showNotification('info', 'Admin mode locked and logged out.');
+  };
+
+  const handleChangeAdminPassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newAdminPassword || newAdminPassword.trim().length < 4) {
+      showNotification('error', 'New password must be at least 4 characters long.');
+      return;
+    }
+    const updatedConfig: SiteConfigData = {
+      ...siteConfig,
+      adminPassword: newAdminPassword.trim(),
+    };
+    await saveSiteConfigToCloud(updatedConfig, 'password-change');
+    setNewAdminPassword('');
+    setShowPasswordChangeModal(false);
+    showNotification('success', 'Admin Password successfully updated & saved to Cloud Database!');
+  };
+
   // 2. Real-time listeners for Public Corporate Content collections
   useEffect(() => {
     const unsubConfig = onSnapshot(
@@ -462,6 +619,7 @@ export default function App() {
             ...data,
             companyLogoUrl: data.companyLogoUrl || prev.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
             officeMapLink: data.officeMapLink || prev.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK,
+            adminPassword: data.adminPassword || prev.adminPassword || 'alsahab2026',
           }));
         }
       },
@@ -1010,6 +1168,7 @@ export default function App() {
       primaryNavy: sanitizeHexColor(normalized.primaryNavy, '#1e3a8a'),
       accentOrange: sanitizeHexColor(normalized.accentOrange, '#f97316'),
       headingScale: normalized.headingScale || 'standard',
+      adminPassword: sanitizeString(normalized.adminPassword || 'alsahab2026', 4, 100, 'alsahab2026'),
       authorId: currentUser.uid,
       updatedAt: serverTimestamp(),
     };
@@ -1838,25 +1997,78 @@ export default function App() {
               <Globe className="w-3.5 h-3.5 text-[#1e3a8a]" />
               <span>Connect Domain</span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !isAdminMode;
-                setIsAdminMode(nextState);
-                if (!nextState) setSelectedElementId(null);
-                showNotification(
-                  'info',
-                  nextState
-                    ? 'Admin Edit Mode ON! Click ANY heading, text, block, or photo anywhere on the page to edit or upload.'
-                    : 'Admin Edit Mode locked. Viewing public corporate portal.'
-                );
-              }}
-              className="px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 cursor-pointer text-white shadow-xs"
-              style={{ backgroundColor: isAdminMode ? siteConfig.accentOrange : siteConfig.primaryNavy }}
-            >
-              {isAdminMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-              <span>{isAdminMode ? 'Admin Mode: ON' : 'Admin Mode'}</span>
-            </button>
+            {isAiStudioEnv ? (
+              <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-300 rounded-lg p-0.5">
+                <span className="hidden xl:inline-block px-2 text-[10px] font-bold text-amber-900 uppercase tracking-wider">
+                  AI Studio
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextState = !isAdminMode;
+                    setIsAdminMode(nextState);
+                    if (!nextState) setSelectedElementId(null);
+                    showNotification(
+                      'info',
+                      nextState
+                        ? 'AI Studio: Admin Edit Mode ON! Click ANY heading, text, block, or photo to edit.'
+                        : 'AI Studio: Admin Edit Mode paused.'
+                    );
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer text-white shadow-2xs"
+                  style={{ backgroundColor: isAdminMode ? siteConfig.accentOrange : siteConfig.primaryNavy }}
+                  title="Google AI Studio Direct Edit Toggle"
+                >
+                  {isAdminMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  <span>{isAdminMode ? 'Admin Mode: ON' : 'Admin Mode'}</span>
+                </button>
+              </div>
+            ) : isAdminAuthenticated ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextState = !isAdminMode;
+                    setIsAdminMode(nextState);
+                    if (!nextState) setSelectedElementId(null);
+                    showNotification(
+                      'info',
+                      nextState
+                        ? 'Admin Edit Mode ON! Click any element or photo to edit.'
+                        : 'Admin Edit Mode paused.'
+                    );
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer text-white shadow-xs"
+                  style={{ backgroundColor: isAdminMode ? siteConfig.accentOrange : siteConfig.primaryNavy }}
+                >
+                  {isAdminMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  <span>{isAdminMode ? 'Admin Mode: ON' : 'Admin Mode: OFF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                  title="Exit & Lock Admin Mode (Logout)"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminAuthError(null);
+                  setAdminInputPassword('');
+                  setShowAdminLoginModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-[#1e3a8a] border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                title="Admin Portal Login (Password Protected)"
+              >
+                <Lock className="w-3.5 h-3.5 text-slate-500" />
+                <span className="hidden sm:inline">Admin Login</span>
+                <span className="sm:hidden">Admin</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -2074,6 +2286,35 @@ export default function App() {
                 <Database className="w-3.5 h-3.5 text-[#f97316]" />
                 <span>Backend & Inquiries ({allInquiries.length})</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewAdminPassword(siteConfig.adminPassword || 'alsahab2026');
+                  setShowPasswordChangeModal(true);
+                }}
+                className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                title="View or Change Admin Master Password"
+              >
+                <Key className="w-3.5 h-3.5 text-[#f97316]" />
+                <span>Admin Password</span>
+              </button>
+
+              {!isAiStudioEnv ? (
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  className="px-3 py-2 text-xs font-semibold bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  title="Lock and Log Out of Admin Mode"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Lock & Exit</span>
+                </button>
+              ) : (
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-md">
+                  AI Studio (Unlocked)
+                </span>
+              )}
 
               <button
                 type="button"
@@ -5352,6 +5593,26 @@ export default function App() {
                 <Server className="w-3 h-3 text-slate-500" />
                 <span>Bluehost cPanel</span>
               </button>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isAdminAuthenticated) {
+                    setAdminAuthError(null);
+                    setAdminInputPassword('');
+                    setShowAdminLoginModal(true);
+                  } else {
+                    const next = !isAdminMode;
+                    setIsAdminMode(next);
+                    showNotification('info', next ? 'Admin Edit Mode activated!' : 'Admin Edit Mode closed.');
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-slate-500 hover:text-[#1e3a8a] hover:underline cursor-pointer font-medium"
+                title="Admin Portal Login (Password Protected)"
+              >
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span>{isAdminAuthenticated ? (isAdminMode ? 'Admin (Active)' : 'Admin (Standby)') : 'Admin Access'}</span>
+              </button>
             </div>
 
             {renderEditableElement(
@@ -6709,6 +6970,234 @@ export default function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Admin Password Verification Modal (Restricts Public Production Access) */}
+      {showAdminLoginModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowAdminLoginModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Top Bar */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-[#1e3a8a] text-white flex items-center justify-center shadow-sm shrink-0">
+                  <Lock className="w-5 h-5 text-[#f97316]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Admin Portal Verification</h2>
+                  <p className="text-xs text-slate-500">Al Sahab Al Rashid Trad. Con. LLC</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminLoginModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Description / Security Notice */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-600">
+              <div className="font-bold text-[#1e3a8a] flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-[#f97316]" />
+                <span>Protected Management Access</span>
+              </div>
+              <p>
+                To safeguard the live portal from unauthorized edits on public domains, Admin Mode requires password authentication. In Google AI Studio, access remains directly accessible.
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {adminAuthError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+                <X className="w-4 h-4 shrink-0 text-red-500" />
+                <span>{adminAuthError}</span>
+              </div>
+            )}
+
+            {/* Password Form */}
+            <form onSubmit={handleUnlockAdminWithPassword} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Admin Master Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPasswordPlaintext ? 'text' : 'password'}
+                    value={adminInputPassword}
+                    onChange={(e) => {
+                      setAdminInputPassword(e.target.value);
+                      setAdminAuthError(null);
+                    }}
+                    placeholder="Enter password (default: alsahab2026)"
+                    className="w-full px-3.5 py-2.5 pr-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1e3a8a] focus:outline-none font-mono-tabular text-sm bg-white"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordPlaintext(!showPasswordPlaintext)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showPasswordPlaintext ? 'Hide password' : 'Show password'}
+                  >
+                    {showPasswordPlaintext ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1.5 flex items-center justify-between">
+                  <span>Default PIN: <code className="font-mono-tabular font-bold text-slate-700">alsahab2026</code></span>
+                  <span className="text-slate-400">Shortcut: <kbd className="font-mono-tabular px-1 bg-slate-100 border border-slate-200 rounded">Ctrl+Shift+A</kbd></span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="rememberAdminSession"
+                  checked={rememberAdminSession}
+                  onChange={(e) => setRememberAdminSession(e.target.checked)}
+                  className="w-4 h-4 rounded text-[#1e3a8a] border-slate-300 cursor-pointer"
+                />
+                <label htmlFor="rememberAdminSession" className="text-slate-600 cursor-pointer select-none">
+                  Keep me authenticated in this browser
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 px-4 font-bold text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                style={{ backgroundColor: siteConfig.primaryNavy }}
+              >
+                <Unlock className="w-4 h-4 text-[#f97316]" />
+                <span>Unlock Admin Mode</span>
+              </button>
+            </form>
+
+            {/* Alternative: Google OAuth Sign-in */}
+            <div className="pt-3 border-t border-slate-200 space-y-2.5">
+              <div className="text-[11px] text-center text-slate-400 font-medium">
+                OR SIGN IN WITH AUTHORIZED GOOGLE ACCOUNT
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await signInAdminWithGoogle();
+                    if (res.user.email === ADMIN_EMAIL) {
+                      setIsAdminAuthenticated(true);
+                      setIsAdminMode(true);
+                      setShowAdminLoginModal(false);
+                      showNotification('success', `Welcome back, Admin (${res.user.email})!`);
+                    } else {
+                      setAdminAuthError(`Signed in as ${res.user.email}, but this account is not authorized.`);
+                    }
+                  } catch {
+                    setAdminAuthError('Google sign-in was cancelled or encountered an error.');
+                  }
+                }}
+                className="w-full py-2 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Google Sign-In ({ADMIN_EMAIL})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: Change Admin Password Modal */}
+      {showPasswordChangeModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowPasswordChangeModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <Key className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Admin Password Settings</h2>
+                  <p className="text-xs text-slate-500">Persists to Cloud Firestore</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPasswordChangeModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs text-slate-600">
+              <p>
+                Current Master Password: <code className="font-mono-tabular font-bold text-[#1e3a8a]">{siteConfig.adminPassword || 'alsahab2026'}</code>
+              </p>
+              <p className="text-[11px] text-slate-500">
+                You can change this password at any time. It will be required to unlock Admin Mode on public domains (Netlify, Bluehost, or wwwasar.com).
+              </p>
+            </div>
+
+            <form onSubmit={handleChangeAdminPassword} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  New Admin Master Password
+                </label>
+                <input
+                  type="text"
+                  value={newAdminPassword}
+                  onChange={(e) => setNewAdminPassword(e.target.value)}
+                  placeholder="Enter new admin password"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1e3a8a] focus:outline-none font-mono-tabular text-sm bg-white"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordChangeModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-semibold text-white rounded-lg cursor-pointer"
+                  style={{ backgroundColor: siteConfig.primaryNavy }}
+                >
+                  Save New Password
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
