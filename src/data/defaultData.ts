@@ -1829,11 +1829,20 @@ export const NETLIFY_TOML_TEMPLATE = `# ========================================
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# HTML fresh revalidation on every deploy
+# HTML and root path fresh revalidation on every deploy (prevents visitors seeing stale versions)
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "max-age=0, no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
 [[headers]]
   for = "/index.html"
   [headers.values]
     Cache-Control = "max-age=0, no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
 `;
 
 export const NETLIFY_REDIRECTS_TEMPLATE = `/*    /index.html   200\n`;

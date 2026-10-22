@@ -111,18 +111,55 @@ import {
 } from './lib/supabase';
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
+// Deployment & Content Version Sync: Ensures EVERY visitor sees the newest build updates immediately
+const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v7_20261022';
+
+function enforceLatestBuildVersion(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const recordedVersion = window.localStorage.getItem('asar_app_build_version');
+    if (recordedVersion !== CURRENT_BUILD_VERSION) {
+      // Version mismatch: wipe any outdated cached content from previous deploys
+      const prefixList = [
+        'asar_cms_site_config',
+        'asar_cms_core_services',
+        'asar_cms_services',
+        'asar_cms_running_projects',
+        'asar_cms_gallery_photos',
+        'asar_cms_completed_projects',
+        'asar_cms_kpi_cards',
+        'asar_cms_core_values',
+        'asar_cms_manpower_groups',
+        'asar_cms_text_overrides',
+        'asar_cms_custom_blocks',
+      ];
+      for (let i = window.localStorage.length - 1; i >= 0; i--) {
+        const k = window.localStorage.key(i);
+        if (k && prefixList.some((p) => k.startsWith(p))) {
+          window.localStorage.removeItem(k);
+        }
+      }
+      window.localStorage.setItem('asar_app_build_version', CURRENT_BUILD_VERSION);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+enforceLatestBuildVersion();
+
 const STORAGE_KEYS = {
-  SITE_CONFIG: 'asar_cms_site_config_v6',
-  SERVICES: 'asar_cms_core_services_v6',
-  RUNNING: 'asar_cms_running_projects_v6',
-  GALLERY: 'asar_cms_gallery_photos_v6',
-  COMPLETED: 'asar_cms_completed_projects_v6',
-  KPIS: 'asar_cms_kpi_cards_v6',
-  VALUES: 'asar_cms_core_values_v6',
-  MANPOWER: 'asar_cms_manpower_groups_v6',
-  TEXT_OVERRIDES: 'asar_cms_text_overrides_v6',
-  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v6',
-  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v6',
+  SITE_CONFIG: 'asar_cms_site_config_v7',
+  SERVICES: 'asar_cms_core_services_v7',
+  RUNNING: 'asar_cms_running_projects_v7',
+  GALLERY: 'asar_cms_gallery_photos_v7',
+  COMPLETED: 'asar_cms_completed_projects_v7',
+  KPIS: 'asar_cms_kpi_cards_v7',
+  VALUES: 'asar_cms_core_values_v7',
+  MANPOWER: 'asar_cms_manpower_groups_v7',
+  TEXT_OVERRIDES: 'asar_cms_text_overrides_v7',
+  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v7',
+  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v7',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -206,11 +243,14 @@ export default function App() {
     ) {
       return true;
     }
+    // Clean up any legacy localStorage persistent authentication so password is required every session
     try {
-      return (
-        window.sessionStorage.getItem('asar_admin_authenticated') === 'true' ||
-        window.localStorage.getItem('asar_admin_authenticated') === 'true'
-      );
+      window.localStorage.removeItem('asar_admin_authenticated');
+    } catch {
+      // ignore
+    }
+    try {
+      return window.sessionStorage.getItem('asar_admin_authenticated') === 'true';
     } catch {
       return false;
     }
@@ -222,7 +262,6 @@ export default function App() {
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [showPasswordPlaintext, setShowPasswordPlaintext] = useState(false);
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
-  const [rememberAdminSession, setRememberAdminSession] = useState(true);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [confirmedBadgeId, setConfirmedBadgeId] = useState<string | null>(null);
 
@@ -278,46 +317,46 @@ export default function App() {
   const [photoDraftUrl, setPhotoDraftUrl] = useState<string>('');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
-  // Automatic LocalStorage persistence whenever any editable state changes
+  // LocalStorage persistence: Only saved when Admin Mode or AI Studio is actively editing
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.SITE_CONFIG, siteConfig);
-  }, [siteConfig]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.SITE_CONFIG, siteConfig);
+  }, [siteConfig, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.SERVICES, coreServices);
-  }, [coreServices]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.SERVICES, coreServices);
+  }, [coreServices, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.RUNNING, runningProjects);
-  }, [runningProjects]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.RUNNING, runningProjects);
+  }, [runningProjects, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.GALLERY, galleryPhotos);
-  }, [galleryPhotos]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.GALLERY, galleryPhotos);
+  }, [galleryPhotos, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.COMPLETED, completedProjects);
-  }, [completedProjects]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.COMPLETED, completedProjects);
+  }, [completedProjects, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.KPIS, kpiCards);
-  }, [kpiCards]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.KPIS, kpiCards);
+  }, [kpiCards, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.VALUES, coreValues);
-  }, [coreValues]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.VALUES, coreValues);
+  }, [coreValues, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.MANPOWER, manpowerGroups);
-  }, [manpowerGroups]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.MANPOWER, manpowerGroups);
+  }, [manpowerGroups, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.TEXT_OVERRIDES, textOverrides);
-  }, [textOverrides]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.TEXT_OVERRIDES, textOverrides);
+  }, [textOverrides, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, customBlocks);
-  }, [customBlocks]);
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, customBlocks);
+  }, [customBlocks, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.LOCAL_INQUIRIES, localInquiries);
@@ -696,13 +735,11 @@ export default function App() {
       setShowAdminLoginModal(false);
       try {
         window.sessionStorage.setItem('asar_admin_authenticated', 'true');
-        if (rememberAdminSession) {
-          window.localStorage.setItem('asar_admin_authenticated', 'true');
-        }
+        window.localStorage.removeItem('asar_admin_authenticated');
       } catch {
         // ignore
       }
-      showNotification('success', 'Admin Mode Unlocked! Welcome back, Admin.');
+      showNotification('success', 'Admin Mode Unlocked for this session! Welcome back.');
     } else {
       setAdminAuthError('Invalid Admin Password. Please try again or sign in with Google.');
     }
@@ -2421,7 +2458,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setNewAdminPassword(siteConfig.adminPassword || 'alsahab2026');
+                  setNewAdminPassword('');
                   setShowPasswordChangeModal(true);
                 }}
                 className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
@@ -7238,7 +7275,7 @@ export default function App() {
                       setAdminInputPassword(e.target.value);
                       setAdminAuthError(null);
                     }}
-                    placeholder="Enter password (default: alsahab2026)"
+                    placeholder="Enter admin password"
                     className="w-full px-3.5 py-2.5 pr-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1e3a8a] focus:outline-none font-mono-tabular text-sm bg-white"
                     autoFocus
                   />
@@ -7252,22 +7289,14 @@ export default function App() {
                   </button>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1.5 flex items-center justify-between">
-                  <span>Default PIN: <code className="font-mono-tabular font-bold text-slate-700">alsahab2026</code></span>
+                  <span className="text-slate-500">Authorized personnel only. Password required per session.</span>
                   <span className="text-slate-400">Shortcut: <kbd className="font-mono-tabular px-1 bg-slate-100 border border-slate-200 rounded">Ctrl+Shift+A</kbd></span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="rememberAdminSession"
-                  checked={rememberAdminSession}
-                  onChange={(e) => setRememberAdminSession(e.target.checked)}
-                  className="w-4 h-4 rounded text-[#1e3a8a] border-slate-300 cursor-pointer"
-                />
-                <label htmlFor="rememberAdminSession" className="text-slate-600 cursor-pointer select-none">
-                  Keep me authenticated in this browser
-                </label>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pt-0.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Session Security: Password will be required for every new session.</span>
               </div>
 
               <button
@@ -7359,9 +7388,10 @@ export default function App() {
             </div>
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs text-slate-600">
-              <p>
-                Current Master Password: <code className="font-mono-tabular font-bold text-[#1e3a8a]">{siteConfig.adminPassword || 'alsahab2026'}</code>
-              </p>
+              <div className="flex items-center justify-between">
+                <span>Current Master Password:</span>
+                <code className="font-mono-tabular font-bold text-[#1e3a8a]">••••••••••••</code>
+              </div>
               <p className="text-[11px] text-slate-500">
                 You can change this password at any time. It will be required to unlock Admin Mode on public domains (Netlify, Bluehost, or wwwasar.com).
               </p>
