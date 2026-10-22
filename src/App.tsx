@@ -30,6 +30,9 @@ import {
   Type,
   Zap,
   Copy,
+  Server,
+  Globe,
+  Cloud,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -82,6 +85,12 @@ import {
   sanitizeHexColor,
   compressUploadedImageFile,
   exportStandaloneHtmlFile,
+  BLUEHOST_HTACCESS_TEMPLATE,
+  downloadHtaccessFile,
+  NETLIFY_TOML_TEMPLATE,
+  NETLIFY_REDIRECTS_TEMPLATE,
+  downloadNetlifyTomlFile,
+  downloadNetlifyRedirectsFile,
 } from './data/defaultData';
 import {
   SUPABASE_PROJECT_ID,
@@ -273,6 +282,40 @@ export default function App() {
   const [showBackendConfigModal, setShowBackendConfigModal] = useState(false);
   const [showDeveloperModal, setShowDeveloperModal] = useState(false);
   const [copiedDeveloperEmail, setCopiedDeveloperEmail] = useState(false);
+  const [showBluehostModal, setShowBluehostModal] = useState(false);
+  const [activeDeployTab, setActiveDeployTab] = useState<'netlify' | 'domain' | 'bluehost'>('netlify');
+  const [copiedHtaccess, setCopiedHtaccess] = useState(false);
+  const [copiedToml, setCopiedToml] = useState(false);
+  const [copiedRedirects, setCopiedRedirects] = useState(false);
+  const [copiedDnsIp, setCopiedDnsIp] = useState(false);
+
+  const handleCopyHtaccess = () => {
+    navigator.clipboard.writeText(BLUEHOST_HTACCESS_TEMPLATE);
+    setCopiedHtaccess(true);
+    showNotification('success', 'Copied Apache .htaccess configuration to clipboard!');
+    setTimeout(() => setCopiedHtaccess(false), 3000);
+  };
+
+  const handleCopyToml = () => {
+    navigator.clipboard.writeText(NETLIFY_TOML_TEMPLATE);
+    setCopiedToml(true);
+    showNotification('success', 'Copied netlify.toml configuration to clipboard!');
+    setTimeout(() => setCopiedToml(false), 3000);
+  };
+
+  const handleCopyRedirects = () => {
+    navigator.clipboard.writeText(NETLIFY_REDIRECTS_TEMPLATE);
+    setCopiedRedirects(true);
+    showNotification('success', 'Copied Netlify _redirects SPA rule to clipboard!');
+    setTimeout(() => setCopiedRedirects(false), 3000);
+  };
+
+  const handleCopyDnsIp = () => {
+    navigator.clipboard.writeText('75.2.60.5');
+    setCopiedDnsIp(true);
+    showNotification('success', 'Copied Netlify Load Balancer IP (75.2.60.5) to clipboard!');
+    setTimeout(() => setCopiedDnsIp(false), 3000);
+  };
 
   // Supabase Backend State (Project ID: utblsxterubtziionaja)
   const [supabaseUrl, setSupabaseUrl] = useState(SUPABASE_URL);
@@ -1768,8 +1811,33 @@ export default function App() {
             </a>
           </nav>
 
-          {/* Zone 3: 1 Primary Action (Admin Mode Toggle) */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Zone 3: Primary Actions (Netlify Publish, Connect Domain & Admin Mode) */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveDeployTab('netlify');
+                setShowBluehostModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              title="Publish this website to Netlify (Fast 30-sec Drag & Drop with free SSL)"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">Publish to Netlify</span>
+              <span className="sm:hidden">Netlify</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveDeployTab('domain');
+                setShowBluehostModal(true);
+              }}
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#1e3a8a] bg-blue-50/90 hover:bg-blue-100 border border-blue-200/90 rounded-lg transition-colors cursor-pointer"
+              title="Connect your custom domain and host (wwwasar.com) through Netlify DNS"
+            >
+              <Globe className="w-3.5 h-3.5 text-[#1e3a8a]" />
+              <span>Connect Domain</span>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -2025,6 +2093,42 @@ export default function App() {
               >
                 <Download className="w-3.5 h-3.5 text-[#f97316]" />
                 <span>Export Single-File HTML</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('netlify');
+                  setShowBluehostModal(true);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+              >
+                <Cloud className="w-3.5 h-3.5 text-emerald-100" />
+                <span>Netlify Publish</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('domain');
+                  setShowBluehostModal(true);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold bg-[#1e3a8a] text-white rounded-lg hover:bg-blue-900 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+              >
+                <Globe className="w-3.5 h-3.5 text-blue-200" />
+                <span>Connect Domain & Host</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('bluehost');
+                  setShowBluehostModal(true);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold bg-slate-700 text-white rounded-lg hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+              >
+                <Server className="w-3.5 h-3.5 text-slate-300" />
+                <span>Bluehost cPanel</span>
               </button>
             </div>
           </div>
@@ -5209,6 +5313,45 @@ export default function App() {
               >
                 abdullahalshakil7@gmail.com
               </a>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('netlify');
+                  setShowBluehostModal(true);
+                }}
+                className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer font-medium"
+                title="Publish on Netlify (Fast 30-sec Drag & Drop)"
+              >
+                <Cloud className="w-3 h-3 text-emerald-600" />
+                <span>Netlify Publish</span>
+              </button>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('domain');
+                  setShowBluehostModal(true);
+                }}
+                className="inline-flex items-center gap-1 text-[#1e3a8a] hover:text-blue-900 hover:underline cursor-pointer font-medium"
+                title="Connect Custom Domain through Netlify DNS"
+              >
+                <Globe className="w-3 h-3 text-[#1e3a8a]" />
+                <span>Connect Domain</span>
+              </button>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeployTab('bluehost');
+                  setShowBluehostModal(true);
+                }}
+                className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 hover:underline cursor-pointer font-medium"
+                title="Open Bluehost cPanel Guide"
+              >
+                <Server className="w-3 h-3 text-slate-500" />
+                <span>Bluehost cPanel</span>
+              </button>
             </div>
 
             {renderEditableElement(
@@ -6057,6 +6200,514 @@ export default function App() {
               >
                 Save & Sync All Now
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WEB PUBLISHING, NETLIFY & DOMAIN SETUP CENTER MODAL */}
+      {showBluehostModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto space-y-6">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-11 h-11 rounded-xl text-white flex items-center justify-center shadow-sm ${
+                    activeDeployTab === 'netlify'
+                      ? 'bg-emerald-600'
+                      : activeDeployTab === 'domain'
+                      ? 'bg-[#1e3a8a]'
+                      : 'bg-blue-600'
+                  }`}
+                >
+                  {activeDeployTab === 'netlify' ? (
+                    <Cloud className="w-6 h-6" />
+                  ) : activeDeployTab === 'domain' ? (
+                    <Globe className="w-6 h-6" />
+                  ) : (
+                    <Server className="w-6 h-6" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-slate-900">
+                      {activeDeployTab === 'netlify'
+                        ? 'Publish to Netlify (Live in 30s)'
+                        : activeDeployTab === 'domain'
+                        ? 'Connect Custom Host & Domain (Netlify DNS)'
+                        : 'Bluehost cPanel & Apache Deployment'}
+                    </h2>
+                    <span
+                      className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded ${
+                        activeDeployTab === 'netlify'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : activeDeployTab === 'domain'
+                          ? 'bg-blue-100 text-blue-900'
+                          : 'bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      Pre-Configured
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Al Sahab Al Rashid Trad. Con. LLC (wwwasar.com) · Muscat, Sultanate of Oman
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBluehostModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setActiveDeployTab('netlify')}
+                className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                  activeDeployTab === 'netlify'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Cloud className="w-4 h-4" />
+                <span>1. Publish to Netlify</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveDeployTab('domain')}
+                className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                  activeDeployTab === 'domain'
+                    ? 'bg-[#1e3a8a] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                <span>2. Connect Custom Domain</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveDeployTab('bluehost')}
+                className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                  activeDeployTab === 'bluehost'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Server className="w-4 h-4" />
+                <span>3. Bluehost / Apache</span>
+              </button>
+            </div>
+
+            {/* TAB 1: NETLIFY DEPLOYMENT */}
+            {activeDeployTab === 'netlify' && (
+              <div className="space-y-5">
+                {/* Netlify Quick Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={downloadNetlifyTomlFile}
+                    className="p-3.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900">Download netlify.toml</span>
+                      <Download className="w-4 h-4 text-emerald-600 group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-emerald-700 mt-1">Build command, publish dir & SPA redirects</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={downloadNetlifyRedirectsFile}
+                    className="p-3.5 bg-cyan-50 border border-cyan-200 hover:bg-cyan-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-cyan-900">Download _redirects</span>
+                      <Download className="w-4 h-4 text-cyan-600 group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-cyan-700 mt-1">SPA rule (/* → /index.html 200)</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportStandaloneHtmlFile(
+                        siteConfig,
+                        coreServices,
+                        runningProjects,
+                        galleryPhotos,
+                        completedProjects,
+                        coreValues,
+                        supabaseUrl,
+                        supabaseKey
+                      )
+                    }
+                    className="p-3.5 bg-orange-50 border border-orange-200 hover:bg-orange-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-orange-900">Single-File HTML</span>
+                      <Download className="w-4 h-4 text-[#f97316] group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-orange-700 mt-1">1-click standalone file for instant drop</p>
+                  </button>
+                </div>
+
+                {/* Netlify Step-by-Step Instructions */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-emerald-600" />
+                    <span>How to Publish to Netlify (Choose Method A or B)</span>
+                  </h3>
+
+                  {/* Method A: Netlify Drop (Fastest) */}
+                  <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-2 text-xs">
+                    <div className="font-bold text-emerald-950 flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded font-mono-tabular">Method A</span>
+                      <span>Instant 30-Second Drag & Drop (Netlify Drop — No Git Required)</span>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
+                      <li>
+                        Run <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular text-emerald-800">npm run build</code> in the terminal to generate the <code className="font-mono-tabular font-bold">dist/</code> folder.
+                      </li>
+                      <li>
+                        Open <strong><a href="https://app.netlify.com/drop" target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline font-semibold">app.netlify.com/drop</a></strong> in your browser and log into Netlify.
+                      </li>
+                      <li>
+                        Drag and drop your <strong>`dist`</strong> folder onto the upload circle.
+                      </li>
+                      <li>
+                        <strong>Done!</strong> Netlify will deploy your portal immediately with a live URL (e.g., <code className="font-mono-tabular text-slate-800">https://your-company.netlify.app</code>) and free automatic SSL.
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* Method B: Git Continuous Deployment */}
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+                    <div className="font-bold text-slate-900 flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-mono-tabular">Method B</span>
+                      <span>GitHub Continuous Deployment (Automated Rebuilds on Git Push)</span>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-600 pl-1">
+                      <li>Push this project to your GitHub repository.</li>
+                      <li>In Netlify, click <strong>"Add new site"</strong> → <strong>"Import an existing project"</strong> → select <strong>GitHub</strong>.</li>
+                      <li>
+                        Select your repository. Netlify automatically detects the included <code className="font-mono-tabular">netlify.toml</code>:
+                        <div className="mt-1 pl-4 font-mono-tabular text-[11px] text-slate-700">
+                          • Build command: <strong>npm run build</strong><br />
+                          • Publish directory: <strong>dist</strong><br />
+                          • Node environment: <strong>Node 20</strong>
+                        </div>
+                      </li>
+                      <li>Click <strong>Deploy Site</strong>. Any future code updates will auto-publish in seconds.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                {/* Netlify Optimization Checklist */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 text-xs">
+                  <div className="font-bold text-slate-900 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Netlify Technical Compatibility Checklist</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>`public/_redirects`:</strong> Directs `/* → /index.html 200`</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>`netlify.toml`:</strong> Build & caching configured</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>Edge CDN:</strong> Global asset distribution</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>Supabase Cloud:</strong> Direct API (no server needed)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Netlify TOML & Redirects Code Preview */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-slate-900">netlify.toml Configuration Preview</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyToml}
+                      className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded cursor-pointer"
+                    >
+                      {copiedToml ? '✓ Copied TOML' : 'Copy netlify.toml'}
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl font-mono-tabular text-[11px] overflow-x-auto max-h-40 leading-relaxed">
+                    {NETLIFY_TOML_TEMPLATE}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: CONNECT CUSTOM DOMAIN & HOST */}
+            {activeDeployTab === 'domain' && (
+              <div className="space-y-5 text-xs">
+                <div className="p-4 bg-blue-50/80 rounded-xl border border-blue-200 space-y-1.5">
+                  <h3 className="font-bold text-blue-950 text-sm flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-[#1e3a8a]" />
+                    <span>Connecting Your Custom Domain (wwwasar.com) to Netlify</span>
+                  </h3>
+                  <p className="text-slate-600">
+                    Once your site is published on Netlify, you can connect your existing domain name and host so visitors see your professional URL (<code className="font-mono-tabular font-bold text-slate-800">wwwasar.com</code>).
+                  </p>
+                </div>
+
+                {/* Step 1: Add Domain in Netlify */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                    1
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="font-bold text-slate-900 text-sm">Add Domain in Netlify Dashboard</div>
+                    <p className="text-slate-600">
+                      In your Netlify site dashboard, navigate to <strong>Site Configuration</strong> (or <strong>Domain Management</strong>) → click <strong>"Add a domain"</strong>.
+                    </p>
+                    <p className="text-slate-600">
+                      Type your domain: <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular font-bold text-[#1e3a8a]">wwwasar.com</code> and click <strong>Verify</strong> → <strong>Add domain</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2: Configure DNS */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                    2
+                  </div>
+                  <div className="space-y-3 flex-1">
+                    <div className="font-bold text-slate-900 text-sm">Configure DNS at Your Domain Registrar / Host</div>
+                    <p className="text-slate-600">
+                      Choose one of the two methods below depending on how you manage your domain:
+                    </p>
+
+                    {/* Method 1: Netlify DNS (Recommended) */}
+                    <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg space-y-2">
+                      <div className="font-bold text-emerald-950 flex items-center gap-2">
+                        <span>⭐ Method 1: Netlify DNS (Recommended — Automatic SSL & Fastest Edge Speed)</span>
+                      </div>
+                      <p className="text-slate-600">
+                        In Netlify, click <strong>"Set up Netlify DNS"</strong>. Netlify will give you 4 custom nameservers, for example:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 font-mono-tabular text-[11px] text-emerald-900 bg-white p-2.5 rounded border border-emerald-200">
+                        <div>1. dns1.p01.nsone.net</div>
+                        <div>2. dns2.p01.nsone.net</div>
+                        <div>3. dns3.p01.nsone.net</div>
+                        <div>4. dns4.p01.nsone.net</div>
+                      </div>
+                      <p className="text-slate-600">
+                        Log into your domain provider (GoDaddy, Namecheap, Bluehost Domains, etc.) and update your domain nameservers to these 4 Netlify nameservers.
+                      </p>
+                    </div>
+
+                    {/* Method 2: External DNS Records */}
+                    <div className="p-3 bg-white border border-slate-300 rounded-lg space-y-2">
+                      <div className="font-bold text-slate-900">
+                        Method 2: Keep Existing DNS (Manual A & CNAME Records)
+                      </div>
+                      <p className="text-slate-600">
+                        If you want to keep your existing DNS hosting, add these two DNS records in your domain control panel:
+                      </p>
+                      <div className="space-y-2 font-mono-tabular text-[11px]">
+                        <div className="p-2 bg-slate-50 border border-slate-200 rounded flex items-center justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-slate-800">A Record:</span> Host <code className="bg-white px-1 border rounded">@</code> → Points to: <strong className="text-blue-700">75.2.60.5</strong>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleCopyDnsIp}
+                            className="px-2 py-0.5 bg-blue-50 text-[#1e3a8a] border border-blue-200 rounded font-sans text-xs font-semibold cursor-pointer"
+                          >
+                            {copiedDnsIp ? '✓ Copied IP' : 'Copy IP'}
+                          </button>
+                        </div>
+                        <div className="p-2 bg-slate-50 border border-slate-200 rounded">
+                          <span className="font-bold text-slate-800">CNAME Record:</span> Host <code className="bg-white px-1 border rounded">www</code> → Points to: <strong className="text-blue-700">&lt;your-site-name&gt;.netlify.app</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Free Automatic SSL */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                    3
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="font-bold text-slate-900 text-sm">Automatic Free HTTPS / SSL Certificate</div>
+                    <p className="text-slate-600">
+                      Within a few minutes of DNS propagation, Netlify automatically provisions and installs a free <strong>Let's Encrypt SSL Certificate</strong> for both <code className="font-mono-tabular">wwwasar.com</code> and <code className="font-mono-tabular">www.wwwasar.com</code>.
+                    </p>
+                    <p className="text-emerald-700 font-semibold">
+                      ✓ "Force HTTPS" is enabled automatically so all visitors are redirected to the secure URL.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: BLUEHOST / APACHE */}
+            {activeDeployTab === 'bluehost' && (
+              <div className="space-y-5">
+                {/* Bluehost Quick Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={downloadHtaccessFile}
+                    className="p-3.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-900">1. Download .htaccess</span>
+                      <Download className="w-4 h-4 text-blue-600 group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-blue-700 mt-1">Pre-configured Apache rewrite, Gzip & caching rules</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyHtaccess}
+                    className="p-3.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900">
+                        {copiedHtaccess ? '✓ Copied to Clipboard!' : '2. Copy .htaccess Code'}
+                      </span>
+                      <Copy className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <p className="text-[11px] text-emerald-700 mt-1">Directly paste into Bluehost File Manager editor</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportStandaloneHtmlFile(
+                        siteConfig,
+                        coreServices,
+                        runningProjects,
+                        galleryPhotos,
+                        completedProjects,
+                        coreValues,
+                        supabaseUrl,
+                        supabaseKey
+                      )
+                    }
+                    className="p-3.5 bg-orange-50 border border-orange-200 hover:bg-orange-100 rounded-xl text-left transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-orange-900">3. Single-File HTML</span>
+                      <Download className="w-4 h-4 text-[#f97316] group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-orange-700 mt-1">1-click standalone file for instant cPanel upload</p>
+                  </button>
+                </div>
+
+                {/* 4 Step Deployment Guide */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Server className="w-4 h-4 text-blue-600" />
+                    <span>How to Deploy on Bluehost cPanel (Step-by-Step)</span>
+                  </h3>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                      <div className="w-6 h-6 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                        1
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-bold text-slate-900">Build the Production Files</div>
+                        <p className="text-slate-600">
+                          In the terminal, run <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular text-blue-700">npm run build</code>. 
+                          This compiles the app into <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular">dist/</code> with <code className="font-mono-tabular">index.html</code>, <code className="font-mono-tabular">.htaccess</code>, and <code className="font-mono-tabular">assets/</code>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                      <div className="w-6 h-6 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                        2
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-bold text-slate-900">Log into Bluehost File Manager</div>
+                        <p className="text-slate-600">
+                          Log in at <a href="https://my.bluehost.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">my.bluehost.com</a>, open <strong>cPanel</strong>, and click <strong>File Manager</strong> → double click <code className="font-mono-tabular font-bold text-slate-800">public_html</code>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                      <div className="w-6 h-6 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                        3
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-bold text-slate-900">Upload & Verify .htaccess</div>
+                        <p className="text-slate-600">
+                          Upload build files into <code className="font-mono-tabular">public_html</code>. Enable <strong>"Show Hidden Files (dotfiles)"</strong> in cPanel settings so <code className="font-mono-tabular font-bold">.htaccess</code> is active.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3.5">
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                        4
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-bold text-slate-900">Free SSL (HTTPS) on Bluehost</div>
+                        <p className="text-slate-600">
+                          In cPanel, navigate to <strong>Security</strong> → <strong>SSL/TLS Status</strong>, select <code className="font-mono-tabular">wwwasar.com</code>, and click <strong>Run AutoSSL</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Apache .htaccess Code Preview */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-slate-900">Apache .htaccess Configuration Preview</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyHtaccess}
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded cursor-pointer"
+                    >
+                      {copiedHtaccess ? '✓ Copied' : 'Copy Snippet'}
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl font-mono-tabular text-[11px] overflow-x-auto max-h-40 leading-relaxed">
+                    {BLUEHOST_HTACCESS_TEMPLATE}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+              <div className="text-[11px] text-slate-500">
+                Lead Engineer: <span className="font-medium text-slate-700">Eng Abdullah Al Osman Shakil (abdullahalshakil7@gmail.com)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBluehostModal(false)}
+                  className="px-5 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                >
+                  Close Deployment Center
+                </button>
+              </div>
             </div>
           </div>
         </div>

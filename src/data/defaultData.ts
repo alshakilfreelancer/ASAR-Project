@@ -1579,3 +1579,180 @@ export function exportStandaloneHtmlFile(
   URL.revokeObjectURL(url);
 }
 
+export const BLUEHOST_HTACCESS_TEMPLATE = `# ==============================================================================
+# AL SAHAB AL RASHID TRAD. CON. LLC — BLUEHOST / APACHE PRODUCTION CONFIGURATION
+# Official Portal: wwwasar.com | Location: Sultanate of Oman
+# ==============================================================================
+
+# 1. UTF-8 ENCODING
+AddDefaultCharset UTF-8
+
+# 2. PROPER MIME TYPES (Ensures Bluehost serves modern formats correctly)
+<IfModule mod_mime.c>
+  AddType image/webp .webp
+  AddType image/svg+xml .svg .svgz
+  AddEncoding gzip .svgz
+  AddType application/json .json
+  AddType font/woff .woff
+  AddType font/woff2 .woff2
+  AddType text/javascript .js
+  AddType text/css .css
+</IfModule>
+
+# 3. SPA ROUTING (Redirects all virtual routes to index.html to prevent 404 errors)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Allow direct access to physical files and directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Rewrite all other paths to index.html for client-side routing
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Fallback error document for Apache 404
+ErrorDocument 404 /index.html
+
+# 4. GZIP / DEFLATE COMPRESSION (Maximum loading speed on Bluehost shared hosting)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html
+  AddOutputFilterByType DEFLATE text/plain
+  AddOutputFilterByType DEFLATE text/xml
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/javascript
+  AddOutputFilterByType DEFLATE application/javascript
+  AddOutputFilterByType DEFLATE application/x-javascript
+  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE application/xml
+  AddOutputFilterByType DEFLATE image/svg+xml
+  AddOutputFilterByType DEFLATE font/woff
+  AddOutputFilterByType DEFLATE font/woff2
+</IfModule>
+
+# 5. BROWSER CACHING HEADERS (Instant repeats, fresh index.html updates)
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 month"
+
+  # HTML files: Do NOT cache so new deployments on Bluehost take effect immediately
+  ExpiresByType text/html "access plus 0 seconds"
+
+  # Static CSS & JS (Vite generates unique content-hashed filenames)
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType text/javascript "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+
+  # Media files & Images
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/x-icon "access plus 1 year"
+
+  # Fonts
+  ExpiresByType font/woff "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Prevent MIME-type sniffing
+  Header set X-Content-Type-Options "nosniff"
+
+  # Clickjacking protection
+  Header always append X-Frame-Options SAMEORIGIN
+
+  # Cache-Control headers for HTML vs Static Assets
+  <FilesMatch "\\.(html|htm)$">
+    Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  <FilesMatch "\\.(js|css|webp|png|jpg|jpeg|gif|svg|woff|woff2)$">
+    Header set Cache-Control "max-age=31536000, public, immutable"
+  </FilesMatch>
+</IfModule>
+`;
+
+export function downloadHtaccessFile() {
+  const blob = new Blob([BLUEHOST_HTACCESS_TEMPLATE], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '.htaccess';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export const NETLIFY_TOML_TEMPLATE = `# ==============================================================================
+# AL SAHAB AL RASHID TRAD. CON. LLC — NETLIFY CONFIGURATION
+# Production Portal: wwwasar.com | Location: Sultanate of Oman
+# ==============================================================================
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA Fallback: Directs all virtual client-side paths to index.html with HTTP 200
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# High-performance asset caching for immutable Vite bundles
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Global security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# HTML fresh revalidation on every deploy
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "max-age=0, no-cache, no-store, must-revalidate"
+`;
+
+export const NETLIFY_REDIRECTS_TEMPLATE = `/*    /index.html   200\n`;
+
+export function downloadNetlifyTomlFile() {
+  const blob = new Blob([NETLIFY_TOML_TEMPLATE], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'netlify.toml';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function downloadNetlifyRedirectsFile() {
+  const blob = new Blob([NETLIFY_REDIRECTS_TEMPLATE], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '_redirects';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+
+
