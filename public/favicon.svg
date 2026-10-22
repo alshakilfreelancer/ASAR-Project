@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <linearGradient id="asarNavyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="50%" stop-color="#172554" />
+      <stop offset="100%" stop-color="#09132c" />
+    </linearGradient>
+    <linearGradient id="asarGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb923c" />
+      <stop offset="50%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#ea580c" />
+    </linearGradient>
+  </defs>
+  <!-- Outer Shield Frame -->
+  <rect x="8" y="8" width="224" height="224" rx="36" fill="#ffffff" stroke="#e2e8f0" stroke-width="3" />
+  <!-- Navy Brand Foundation -->
+  <rect x="18" y="18" width="204" height="204" rx="28" fill="url(#asarNavyGrad)" />
+  <!-- Gold Geometric Precision Border -->
+  <rect x="22" y="22" width="196" height="196" rx="24" fill="none" stroke="url(#asarGoldGrad)" stroke-width="2.5" stroke-dasharray="8 4" opacity="0.8" />
+  
+  <!-- Architectural Sky Silhouette -->
+  <g opacity="0.35">
+    <path d="M40 148 L40 120 L58 120 L58 148" fill="#ffffff" />
+    <path d="M62 148 L62 98 L84 98 L84 148" fill="#ffffff" />
+    <path d="M156 148 L156 104 L178 104 L178 148" fill="#ffffff" />
+    <path d="M182 148 L182 126 L198 126 L198 148" fill="#ffffff" />
+  </g>
+
+  <!-- Heavy Structural Crane Boom & EPC Truss (Gold) -->
+  <path d="M42 146 L120 44 L198 146" fill="none" stroke="url(#asarGoldGrad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Crane Tower Center Mast -->
+  <line x1="120" y1="44" x2="120" y2="146" stroke="url(#asarGoldGrad)" stroke-width="5" />
+  <!-- Internal Truss Bracing (White & Gold) -->
+  <line x1="68" y1="112" x2="172" y2="112" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" />
+  <line x1="88" y1="84" x2="152" y2="84" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+  <line x1="68" y1="112" x2="120" y2="84" stroke="url(#asarGoldGrad)" stroke-width="3" />
+  <line x1="172" y1="112" x2="120" y2="84" stroke="url(#asarGoldGrad)" stroke-width="3" />
+
+  <!-- Center Construction Monolith Tower -->
+  <rect x="106" y="90" width="28" height="56" rx="3" fill="#ffffff" />
+  <rect x="111" y="96" width="7" height="10" fill="#1e3a8a" />
+  <rect x="122" y="96" width="7" height="10" fill="#1e3a8a" />
+  <rect x="111" y="112" width="7" height="10" fill="#1e3a8a" />
+  <rect x="122" y="112" width="7" height="10" fill="#1e3a8a" />
+  <rect x="111" y="128" width="7" height="12" fill="#f97316" />
+  <rect x="122" y="128" width="7" height="12" fill="#f97316" />
+
+  <!-- Ground Level Foundation Beam -->
+  <rect x="36" y="146" width="168" height="6" rx="2" fill="url(#asarGoldGrad)" />
+
+  <!-- ASAR Monogram Plaque -->
+  <rect x="32" y="158" width="176" height="38" rx="8" fill="url(#asarGoldGrad)" />
+  <text x="120" y="184" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="900" letter-spacing="4" fill="#ffffff">ASAR</text>
+  <text x="120" y="210" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="800" letter-spacing="2.5" fill="#e2e8f0">TRAD. CON. LLC · OMAN</text>
+</svg>

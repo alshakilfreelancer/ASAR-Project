@@ -95,3 +95,21 @@ If you prefer not to change nameservers, configure two DNS records at your curre
 - **Supabase Cloud Database**: Client-side connection to `utblsxterubtziionaja` means zero backend server setup needed on Netlify.
 - **Official Google Maps link**: Points to Oman headquarters `https://maps.app.goo.gl/bA6J8idhXRwydofNA?g_st=ac`.
 - **Developer Credit**: Eng Abdullah Al Osman Shakil (Electrical Engineer) displayed across the interface.
+
+---
+
+## 📸 6. Custom Domain (wwwasar.com) & Google Search Photo Resolution
+
+If you opened `wwwasar.com` or searched for the domain on Google and photos were not visible:
+
+1. **Google Search & Social Media Previews**:
+   - `index.html` now includes high-resolution OpenGraph cards (`og:image`), Twitter cards, official `favicon.svg`, and Schema.org `GeneralContractor` structured data.
+   - When Google re-crawls or when links are shared on WhatsApp/LinkedIn, your official emblem and project photos will display prominently.
+
+2. **Browser Cache on wwwasar.com**:
+   - Browsers maintain isolated local storage per domain. If you visited `wwwasar.com` prior to uploading the authentic Oman site photos, your browser held older placeholders.
+   - The app has upgraded to storage version `v6` with automatic photo sanitization.
+   - You can also click **"🔄 Clear Stale Cache & Sync All 29 Photos"** in the Deployment Center or press `Ctrl + F5` (`Cmd + Shift + R` on Mac) on `wwwasar.com` to refresh immediately.
+
+3. **Deploying the Latest Build to Netlify**:
+   - Drag the updated **`dist`** folder or click **"Download Netlify Zip"** in the app and upload it to **[app.netlify.com/drop](https://app.netlify.com/drop)** to update your live custom domain instantly.

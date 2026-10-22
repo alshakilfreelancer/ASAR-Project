@@ -112,17 +112,17 @@ import {
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
 const STORAGE_KEYS = {
-  SITE_CONFIG: 'asar_cms_site_config_v5',
-  SERVICES: 'asar_cms_core_services_v5',
-  RUNNING: 'asar_cms_running_projects_v5',
-  GALLERY: 'asar_cms_gallery_photos_v5',
-  COMPLETED: 'asar_cms_completed_projects_v5',
-  KPIS: 'asar_cms_kpi_cards_v5',
-  VALUES: 'asar_cms_core_values_v5',
-  MANPOWER: 'asar_cms_manpower_groups_v5',
-  TEXT_OVERRIDES: 'asar_cms_text_overrides_v5',
-  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v5',
-  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v5',
+  SITE_CONFIG: 'asar_cms_site_config_v6',
+  SERVICES: 'asar_cms_core_services_v6',
+  RUNNING: 'asar_cms_running_projects_v6',
+  GALLERY: 'asar_cms_gallery_photos_v6',
+  COMPLETED: 'asar_cms_completed_projects_v6',
+  KPIS: 'asar_cms_kpi_cards_v6',
+  VALUES: 'asar_cms_core_values_v6',
+  MANPOWER: 'asar_cms_manpower_groups_v6',
+  TEXT_OVERRIDES: 'asar_cms_text_overrides_v6',
+  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v6',
+  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v6',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -133,6 +133,21 @@ function loadFromStorage<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function sanitizeLoadedList<T extends { imageUrl: string }>(
+  items: T[],
+  defaults: T[]
+): T[] {
+  if (!Array.isArray(items) || items.length === 0) return defaults;
+  return items.map((item, idx) => {
+    const fallbackItem = defaults[idx % defaults.length];
+    const img = (item.imageUrl || '').trim();
+    if (!img || img === 'undefined' || img === 'null') {
+      return { ...item, imageUrl: fallbackItem.imageUrl };
+    }
+    return item;
+  });
 }
 
 function saveToStorage<T>(key: string, value: T): void {
@@ -223,16 +238,16 @@ export default function App() {
     };
   });
   const [coreServices, setCoreServices] = useState<CoreServiceItem[]>(() =>
-    loadFromStorage(STORAGE_KEYS.SERVICES, DEFAULT_CORE_SERVICES)
+    sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.SERVICES, DEFAULT_CORE_SERVICES), DEFAULT_CORE_SERVICES)
   );
   const [runningProjects, setRunningProjects] = useState<RunningProjectItem[]>(() =>
-    loadFromStorage(STORAGE_KEYS.RUNNING, DEFAULT_RUNNING_PROJECTS)
+    sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.RUNNING, DEFAULT_RUNNING_PROJECTS), DEFAULT_RUNNING_PROJECTS)
   );
   const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhotoItem[]>(() =>
-    loadFromStorage(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY_PHOTOS)
+    sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY_PHOTOS), DEFAULT_GALLERY_PHOTOS)
   );
   const [completedProjects, setCompletedProjects] = useState<CompletedProjectItem[]>(() =>
-    loadFromStorage(STORAGE_KEYS.COMPLETED, DEFAULT_COMPLETED_PROJECTS)
+    sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.COMPLETED, DEFAULT_COMPLETED_PROJECTS), DEFAULT_COMPLETED_PROJECTS)
   );
   const [kpiCards, setKpiCards] = useState<KpiCardItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.KPIS, DEFAULT_KPI_CARDS)
@@ -434,7 +449,7 @@ export default function App() {
     }
   };
 
-  // Universal Image Error Fallback: Prevents infinite error loops and guarantees zero broken images on Netlify, Bluehost or any host
+  // Universal Image Error Fallback: Prevents infinite error loops and guarantees zero broken images on Netlify, wwwasar.com, Bluehost, or any host
   const handleImageError = (
     e: React.SyntheticEvent<HTMLImageElement, Event>,
     category = 'Civil Works',
@@ -442,9 +457,40 @@ export default function App() {
     location = 'Muscat, Oman'
   ) => {
     const target = e.currentTarget;
-    if (target.dataset.fallbackApplied) return;
-    target.dataset.fallbackApplied = 'true';
+    if (target.dataset.fallbackApplied === 'svg') return;
+
+    // First attempt: If URL had a leading slash (/assets/...) and domain routing requires relative (./assets/...), try once
+    const currentSrc = target.getAttribute('src') || '';
+    if (!target.dataset.attemptedRelative && currentSrc.startsWith('/assets/')) {
+      target.dataset.attemptedRelative = 'true';
+      target.src = currentSrc.replace(/^\/assets\//, './assets/');
+      return;
+    }
+
+    // Final guaranteed fallback: High-fidelity inline SVG vector data URI (zero network needed)
+    target.dataset.fallbackApplied = 'svg';
     target.src = getFallbackSvgForCategory(category, title, location);
+  };
+
+  // Instant Reset / Sync button to clear stale browser localStorage on custom domains (wwwasar.com)
+  const handleForceSyncOfficialPhotos = () => {
+    setCoreServices(DEFAULT_CORE_SERVICES);
+    setRunningProjects(DEFAULT_RUNNING_PROJECTS);
+    setGalleryPhotos(DEFAULT_GALLERY_PHOTOS);
+    setCompletedProjects(DEFAULT_COMPLETED_PROJECTS);
+    setSiteConfig((prev) => ({
+      ...prev,
+      companyLogoUrl: DEFAULT_COMPANY_LOGO_URI,
+    }));
+    try {
+      window.localStorage.removeItem(STORAGE_KEYS.SERVICES);
+      window.localStorage.removeItem(STORAGE_KEYS.RUNNING);
+      window.localStorage.removeItem(STORAGE_KEYS.GALLERY);
+      window.localStorage.removeItem(STORAGE_KEYS.COMPLETED);
+    } catch {
+      // Ignore
+    }
+    showNotification('success', 'Reset & synchronized all 29 authentic Oman project photos!');
   };
 
   // Supabase Backend State (Project ID: utblsxterubtziionaja)
@@ -6947,6 +6993,31 @@ export default function App() {
                     <p className="text-emerald-700 font-semibold">
                       ✓ "Force HTTPS" is enabled automatically so all visitors are redirected to the secure URL.
                     </p>
+                  </div>
+                </div>
+
+                {/* Step 4: Google Search, Favicon & Photo Cache Synchronization */}
+                <div className="p-4 bg-orange-50/80 rounded-xl border border-orange-200 flex gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-[#f97316] text-white flex items-center justify-center shrink-0 font-bold text-xs">
+                    4
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <div className="font-bold text-slate-900 text-sm">Google Search Results & Photo Visibility on wwwasar.com</div>
+                    <p className="text-slate-600 leading-relaxed">
+                      If you search for <code className="font-mono font-bold text-slate-800">wwwasar.com</code> or visited before the authentic Oman photos were uploaded:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-slate-600 pl-1">
+                      <li><strong>Google Search & Social Cards:</strong> The site now includes official high-resolution <code className="font-mono">favicon.svg</code>, <code className="font-mono">og:image</code>, Twitter cards, and Schema.org rich business data so Google Search and social media previews display your photos automatically.</li>
+                      <li><strong>Clear Old Browser Cache on wwwasar.com:</strong> If your browser on <code className="font-mono">wwwasar.com</code> still holds old cached data from earlier visits, click below to sync all 29 Oman site photos immediately:</li>
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={handleForceSyncOfficialPhotos}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#f97316] hover:bg-orange-600 active:scale-98 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-all"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>🔄 Clear Stale Cache & Sync All 29 Photos</span>
+                    </button>
                   </div>
                 </div>
               </div>
