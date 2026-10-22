@@ -1,0 +1,367 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Zero-DB-read admin check for list queries (Pillar 8 Cost-Optimization Clause)
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'alshakilfreelancer@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Validation Blueprint: SiteConfig
+    function isValidSiteConfig(data) {
+      return data.keys().hasAll([
+        'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
+        'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
+        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
+        'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
+        'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'authorId', 'updatedAt'
+      ]) &&
+      data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 160 &&
+      data.companyLogoUrl is string && data.companyLogoUrl.size() >= 5 && data.companyLogoUrl.size() <= 350000 &&
+      data.tagline is string && data.tagline.size() >= 2 && data.tagline.size() <= 240 &&
+      data.heroSubtext is string && data.heroSubtext.size() >= 10 && data.heroSubtext.size() <= 800 &&
+      data.officeAddress is string && data.officeAddress.size() >= 5 && data.officeAddress.size() <= 300 &&
+      data.officeCoordinates is string && data.officeCoordinates.size() >= 3 && data.officeCoordinates.size() <= 80 &&
+      data.officeMapLink is string && data.officeMapLink.size() >= 5 && data.officeMapLink.size() <= 500 &&
+      data.officePhone is string && data.officePhone.size() >= 5 && data.officePhone.size() <= 60 &&
+      data.officeEmail is string && data.officeEmail.size() >= 5 && data.officeEmail.size() <= 120 &&
+      data.aboutBackground is string && data.aboutBackground.size() >= 20 && data.aboutBackground.size() <= 2500 &&
+      data.ourAim is string && data.ourAim.size() >= 10 && data.ourAim.size() <= 800 &&
+      data.ourVision is string && data.ourVision.size() >= 10 && data.ourVision.size() <= 800 &&
+      data.ourMission is string && data.ourMission.size() >= 10 && data.ourMission.size() <= 800 &&
+      data.primaryNavy is string && data.primaryNavy.size() == 7 && data.primaryNavy.matches('^#[0-9a-fA-F]{6}$') &&
+      data.accentOrange is string && data.accentOrange.size() == 7 && data.accentOrange.matches('^#[0-9a-fA-F]{6}$') &&
+      data.headingScale is string && data.headingScale.size() >= 5 && data.headingScale.size() <= 16 &&
+      (data.headingScale == 'standard' || data.headingScale == 'compact' || data.headingScale == 'large') &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: CoreService
+    function isValidCoreService(data) {
+      return data.keys().hasAll([
+        'orderIndex', 'title', 'categoryCode', 'summary', 'specialties', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'orderIndex', 'title', 'categoryCode', 'summary', 'specialties', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.orderIndex is number && data.orderIndex >= 0 && data.orderIndex <= 100 &&
+      data.title is string && data.title.size() >= 3 && data.title.size() <= 140 &&
+      data.categoryCode is string && data.categoryCode.size() >= 2 && data.categoryCode.size() <= 60 &&
+      data.summary is string && data.summary.size() >= 10 && data.summary.size() <= 1200 &&
+      data.specialties is string && data.specialties.size() >= 5 && data.specialties.size() <= 800 &&
+      data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: RunningProject
+    function isValidRunningProject(data) {
+      return data.keys().hasAll([
+        'title', 'location', 'client', 'category', 'progress', 'startDate',
+        'completionTarget', 'manpowerCount', 'engineerLead', 'summary',
+        'scopeDetails', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title', 'location', 'client', 'category', 'progress', 'startDate',
+        'completionTarget', 'manpowerCount', 'engineerLead', 'summary',
+        'scopeDetails', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+      data.location is string && data.location.size() >= 2 && data.location.size() <= 120 &&
+      data.client is string && data.client.size() >= 2 && data.client.size() <= 140 &&
+      data.category is string && data.category.size() >= 2 && data.category.size() <= 80 &&
+      data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+      data.startDate is string && data.startDate.size() >= 4 && data.startDate.size() <= 40 &&
+      data.completionTarget is string && data.completionTarget.size() >= 4 && data.completionTarget.size() <= 40 &&
+      data.manpowerCount is number && data.manpowerCount >= 1 && data.manpowerCount <= 50000 &&
+      data.engineerLead is string && data.engineerLead.size() >= 2 && data.engineerLead.size() <= 120 &&
+      data.summary is string && data.summary.size() >= 10 && data.summary.size() <= 500 &&
+      data.scopeDetails is string && data.scopeDetails.size() >= 10 && data.scopeDetails.size() <= 2000 &&
+      data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: GalleryPhoto
+    function isValidGalleryPhoto(data) {
+      return data.keys().hasAll([
+        'title', 'category', 'location', 'caption', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title', 'category', 'location', 'caption', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+      data.category is string && data.category.size() >= 2 && data.category.size() <= 80 &&
+      data.location is string && data.location.size() >= 2 && data.location.size() <= 120 &&
+      data.caption is string && data.caption.size() >= 5 && data.caption.size() <= 600 &&
+      data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: CompletedProject
+    function isValidCompletedProject(data) {
+      return data.keys().hasAll([
+        'title', 'client', 'location', 'completionYear', 'contractValue',
+        'category', 'description', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title', 'client', 'location', 'completionYear', 'contractValue',
+        'category', 'description', 'imageUrl', 'authorId', 'updatedAt'
+      ]) &&
+      data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+      data.client is string && data.client.size() >= 2 && data.client.size() <= 140 &&
+      data.location is string && data.location.size() >= 2 && data.location.size() <= 120 &&
+      data.completionYear is string && data.completionYear.size() >= 4 && data.completionYear.size() <= 20 &&
+      data.contractValue is string && data.contractValue.size() >= 2 && data.contractValue.size() <= 80 &&
+      data.category is string && data.category.size() >= 2 && data.category.size() <= 80 &&
+      data.description is string && data.description.size() >= 10 && data.description.size() <= 1200 &&
+      data.imageUrl is string && data.imageUrl.size() >= 5 && data.imageUrl.size() <= 350000 &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: TextOverride
+    function isValidTextOverride(data) {
+      return data.keys().hasAll([
+        'elementId', 'textValue', 'textColor', 'fontSize', 'bgColor', 'hidden', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'elementId', 'textValue', 'textColor', 'fontSize', 'bgColor', 'hidden', 'authorId', 'updatedAt'
+      ]) &&
+      data.elementId is string && data.elementId.size() >= 1 && data.elementId.size() <= 120 &&
+      data.textValue is string && data.textValue.size() >= 0 && data.textValue.size() <= 5000 &&
+      data.textColor is string && data.textColor.size() >= 0 && data.textColor.size() <= 30 &&
+      data.fontSize is string && data.fontSize.size() >= 0 && data.fontSize.size() <= 30 &&
+      data.bgColor is string && data.bgColor.size() >= 0 && data.bgColor.size() <= 30 &&
+      data.hidden is bool &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: CustomBlock
+    function isValidCustomBlock(data) {
+      return data.keys().hasAll([
+        'sectionId', 'heading', 'body', 'imageUrl', 'bgColor', 'textColor', 'authorId', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'sectionId', 'heading', 'body', 'imageUrl', 'bgColor', 'textColor', 'authorId', 'updatedAt'
+      ]) &&
+      data.sectionId is string && data.sectionId.size() >= 2 && data.sectionId.size() <= 60 &&
+      data.heading is string && data.heading.size() >= 1 && data.heading.size() <= 300 &&
+      data.body is string && data.body.size() >= 0 && data.body.size() <= 3000 &&
+      data.imageUrl is string && data.imageUrl.size() >= 0 && data.imageUrl.size() <= 350000 &&
+      data.bgColor is string && data.bgColor.size() >= 0 && data.bgColor.size() <= 30 &&
+      data.textColor is string && data.textColor.size() >= 0 && data.textColor.size() <= 30 &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.authorId == request.auth.uid &&
+      data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // Validation Blueprint: ClientInquiry
+    function isValidClientInquiry(data) {
+      return data.keys().hasAll([
+        'clientName', 'companyName', 'email', 'phone', 'inquiryType',
+        'projectLocation', 'manpowerDetails', 'message', 'status', 'authorId', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'clientName', 'companyName', 'email', 'phone', 'inquiryType',
+        'projectLocation', 'manpowerDetails', 'message', 'status', 'authorId', 'createdAt'
+      ]) &&
+      data.clientName is string && data.clientName.size() >= 2 && data.clientName.size() <= 120 &&
+      data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 140 &&
+      data.email is string && data.email.size() >= 5 && data.email.size() <= 120 &&
+      data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 50 &&
+      data.inquiryType is string && data.inquiryType.size() >= 3 && data.inquiryType.size() <= 80 &&
+      (
+        data.inquiryType == 'Civil & Structural Works' ||
+        data.inquiryType == 'Earth Works & Excavation' ||
+        data.inquiryType == 'Skilled & Unskilled Manpower Supply' ||
+        data.inquiryType == 'Mechanical & Electrical Works' ||
+        data.inquiryType == 'Pipeline & Special Structures' ||
+        data.inquiryType == 'Turnkey EPC Tender Inquiry'
+      ) &&
+      data.projectLocation is string && data.projectLocation.size() >= 2 && data.projectLocation.size() <= 120 &&
+      data.manpowerDetails is string && data.manpowerDetails.size() >= 0 && data.manpowerDetails.size() <= 500 &&
+      data.message is string && data.message.size() >= 10 && data.message.size() <= 2000 &&
+      data.status is string && data.status.size() >= 3 && data.status.size() <= 20 &&
+      (data.status == 'new' || data.status == 'reviewed' || data.status == 'archived') &&
+      data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+      data.createdAt is timestamp;
+    }
+
+    // 1. SiteConfig rules (Public Corporate Display Read, Verified Admin Write)
+    match /siteConfig/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if resource.data.companyName is string;
+      allow create: if isVerifiedUser() && isValidId(configId) && isValidSiteConfig(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(configId) && isValidSiteConfig(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'companyName', 'companyLogoUrl', 'tagline', 'heroSubtext', 'officeAddress', 'officeCoordinates',
+          'officeMapLink', 'officePhone', 'officeEmail', 'aboutBackground', 'ourAim', 'ourVision',
+          'ourMission', 'primaryNavy', 'accentOrange', 'headingScale', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(configId) && isAdmin();
+    }
+
+    // 2. CoreServices rules (Public Corporate Display Read, Verified Admin Write)
+    match /coreServices/{serviceId} {
+      allow get: if isValidId(serviceId);
+      allow list: if resource.data.title is string;
+      allow create: if isVerifiedUser() && isValidId(serviceId) && isValidCoreService(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(serviceId) && isValidCoreService(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'orderIndex', 'title', 'categoryCode', 'summary', 'specialties', 'imageUrl', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(serviceId) && isAdmin();
+    }
+
+    // 3. RunningProjects rules (Public Corporate Display Read, Verified Admin Write)
+    match /runningProjects/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if resource.data.title is string;
+      allow create: if isVerifiedUser() && isValidId(projectId) && isValidRunningProject(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(projectId) && isValidRunningProject(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'location', 'client', 'category', 'progress', 'startDate',
+          'completionTarget', 'manpowerCount', 'engineerLead', 'summary',
+          'scopeDetails', 'imageUrl', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(projectId) && isAdmin();
+    }
+
+    // 4. GalleryPhotos rules (Public Corporate Display Read, Verified Admin Write)
+    match /galleryPhotos/{photoId} {
+      allow get: if isValidId(photoId);
+      allow list: if resource.data.title is string;
+      allow create: if isVerifiedUser() && isValidId(photoId) && isValidGalleryPhoto(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(photoId) && isValidGalleryPhoto(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'location', 'caption', 'imageUrl', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(photoId) && isAdmin();
+    }
+
+    // 5. CompletedProjects rules (Public Corporate Display Read, Verified Admin Write)
+    match /completedProjects/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if resource.data.title is string;
+      allow create: if isVerifiedUser() && isValidId(projectId) && isValidCompletedProject(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(projectId) && isValidCompletedProject(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'client', 'location', 'completionYear', 'contractValue',
+          'category', 'description', 'imageUrl', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(projectId) && isAdmin();
+    }
+
+    // 6. TextOverrides rules (Public Corporate Display Read, Verified Admin Write)
+    match /textOverrides/{overrideId} {
+      allow get: if isValidId(overrideId);
+      allow list: if resource.data.elementId is string;
+      allow create: if isVerifiedUser() && isValidId(overrideId) && isValidTextOverride(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(overrideId) && isValidTextOverride(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'elementId', 'textValue', 'textColor', 'fontSize', 'bgColor', 'hidden', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(overrideId) && isAdmin();
+    }
+
+    // 7. CustomBlocks rules (Public Corporate Display Read, Verified Admin Write)
+    match /customBlocks/{blockId} {
+      allow get: if isValidId(blockId);
+      allow list: if resource.data.sectionId is string;
+      allow create: if isVerifiedUser() && isValidId(blockId) && isValidCustomBlock(incoming()) && isAdmin();
+      allow update: if isVerifiedUser() && isValidId(blockId) && isValidCustomBlock(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'sectionId', 'heading', 'body', 'imageUrl', 'bgColor', 'textColor', 'updatedAt'
+        ])
+      );
+      allow delete: if isVerifiedUser() && isValidId(blockId) && isAdmin();
+    }
+
+    // 8. ClientInquiries rules (PII Isolated: Only Owner or Verified Admin may Read/List, zero DB lookups in list)
+    match /inquiries/{inquiryId} {
+      allow get: if isSignedIn() && isValidId(inquiryId) && (
+        existing().authorId == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid || isBootstrappedAdmin()
+      );
+      allow create: if isValidId(inquiryId) && isValidClientInquiry(incoming()) &&
+        incoming().status == 'new' &&
+        incoming().createdAt == request.time &&
+        (
+          (isSignedIn() && incoming().authorId == request.auth.uid) ||
+          (!isSignedIn() && incoming().authorId == 'public_visitor')
+        );
+      allow update: if isVerifiedUser() && isValidId(inquiryId) && isValidClientInquiry(incoming()) && isAdmin() && (
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        (existing().status != 'archived' || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+      );
+      allow delete: if isVerifiedUser() && isValidId(inquiryId) && isAdmin();
+    }
+
+    // 9. Admins lookup collection (Read-only for self, no client writes)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+  }
+}

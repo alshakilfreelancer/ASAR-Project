@@ -1,0 +1,717 @@
+{
+  "entities": {
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global customizable corporate website text, Google Maps link, and theme tokens.",
+      "type": "object",
+      "properties": {
+        "companyName": {
+          "type": "string",
+          "description": "Official registered company title",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "companyLogoUrl": {
+          "type": "string",
+          "description": "Company logo image URL or uploaded Data URI",
+          "minLength": 5,
+          "maxLength": 350000
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Primary corporate tagline",
+          "minLength": 2,
+          "maxLength": 240
+        },
+        "heroSubtext": {
+          "type": "string",
+          "description": "Executive summary shown in the header section",
+          "minLength": 10,
+          "maxLength": 800
+        },
+        "officeAddress": {
+          "type": "string",
+          "description": "Official head office location based on wwwasar.com",
+          "minLength": 5,
+          "maxLength": 300
+        },
+        "officeCoordinates": {
+          "type": "string",
+          "description": "GPS coordinates for Muscat Sultanate of Oman headquarters",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "officeMapLink": {
+          "type": "string",
+          "description": "Official Google Maps share link for company location",
+          "minLength": 5,
+          "maxLength": 500
+        },
+        "officePhone": {
+          "type": "string",
+          "description": "Primary corporate telephone",
+          "minLength": 5,
+          "maxLength": 60
+        },
+        "officeEmail": {
+          "type": "string",
+          "description": "Official corporate contact email",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "aboutBackground": {
+          "type": "string",
+          "description": "Detailed company background narrative",
+          "minLength": 20,
+          "maxLength": 2500
+        },
+        "ourAim": {
+          "type": "string",
+          "description": "Explicit OUR AIM statement",
+          "minLength": 10,
+          "maxLength": 800
+        },
+        "ourVision": {
+          "type": "string",
+          "description": "Explicit OUR VISION statement",
+          "minLength": 10,
+          "maxLength": 800
+        },
+        "ourMission": {
+          "type": "string",
+          "description": "Explicit OUR MISSION statement",
+          "minLength": 10,
+          "maxLength": 800
+        },
+        "primaryNavy": {
+          "type": "string",
+          "description": "Corporate navy hex color code",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "minLength": 7,
+          "maxLength": 7
+        },
+        "accentOrange": {
+          "type": "string",
+          "description": "Construction gold/orange hex color code",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "minLength": 7,
+          "maxLength": 7
+        },
+        "headingScale": {
+          "type": "string",
+          "description": "Typography scale preset for headings",
+          "enum": ["standard", "compact", "large"],
+          "minLength": 5,
+          "maxLength": 16
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the admin who updated the configuration",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last update"
+        }
+      },
+      "required": [
+        "companyName",
+        "companyLogoUrl",
+        "tagline",
+        "heroSubtext",
+        "officeAddress",
+        "officeCoordinates",
+        "officeMapLink",
+        "officePhone",
+        "officeEmail",
+        "aboutBackground",
+        "ourAim",
+        "ourVision",
+        "ourMission",
+        "primaryNavy",
+        "accentOrange",
+        "headingScale",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "CoreService": {
+      "title": "CoreService",
+      "description": "Company core service and work type card with image and technical breakdown.",
+      "type": "object",
+      "properties": {
+        "orderIndex": {
+          "type": "number",
+          "description": "Display order index"
+        },
+        "title": {
+          "type": "string",
+          "description": "Service title",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "categoryCode": {
+          "type": "string",
+          "description": "Short division identifier",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "summary": {
+          "type": "string",
+          "description": "Detailed description of the work type",
+          "minLength": 10,
+          "maxLength": 1200
+        },
+        "specialties": {
+          "type": "string",
+          "description": "Dot-separated specialties list",
+          "minLength": 5,
+          "maxLength": 800
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Image URL or SVG/Canvas data URI",
+          "minLength": 5,
+          "maxLength": 350000
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        }
+      },
+      "required": [
+        "orderIndex",
+        "title",
+        "categoryCode",
+        "summary",
+        "specialties",
+        "imageUrl",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "RunningProject": {
+      "title": "RunningProject",
+      "description": "Ongoing construction or EPC project site.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Project site name",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "location": {
+          "type": "string",
+          "description": "Site Governorate / Wilayat in Oman",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "client": {
+          "type": "string",
+          "description": "Client or main contractor organization",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "category": {
+          "type": "string",
+          "description": "Work type classification",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "progress": {
+          "type": "number",
+          "description": "Completion percentage (0 to 100)"
+        },
+        "startDate": {
+          "type": "string",
+          "description": "Mobilization date",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "completionTarget": {
+          "type": "string",
+          "description": "Scheduled handover period",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "manpowerCount": {
+          "type": "number",
+          "description": "Active site workforce deployed"
+        },
+        "engineerLead": {
+          "type": "string",
+          "description": "Lead Project Manager / Site Engineer",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "summary": {
+          "type": "string",
+          "description": "Brief card summary",
+          "minLength": 10,
+          "maxLength": 500
+        },
+        "scopeDetails": {
+          "type": "string",
+          "description": "Full technical scope shown in interactive modal",
+          "minLength": 10,
+          "maxLength": 2000
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Site photo URL or Data URI",
+          "minLength": 5,
+          "maxLength": 350000
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID who created/updated the site",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "title",
+        "location",
+        "client",
+        "category",
+        "progress",
+        "startDate",
+        "completionTarget",
+        "manpowerCount",
+        "engineerLead",
+        "summary",
+        "scopeDetails",
+        "imageUrl",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "GalleryPhoto": {
+      "title": "GalleryPhoto",
+      "description": "Work site photograph for the responsive gallery and interactive carousel slider.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Photo title",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "category": {
+          "type": "string",
+          "description": "Work division tag",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "location": {
+          "type": "string",
+          "description": "Site location",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "caption": {
+          "type": "string",
+          "description": "Detailed description of the work shown",
+          "minLength": 5,
+          "maxLength": 600
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Image URL or Data URI",
+          "minLength": 5,
+          "maxLength": 350000
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "title",
+        "category",
+        "location",
+        "caption",
+        "imageUrl",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "CompletedProject": {
+      "title": "CompletedProject",
+      "description": "Successfully delivered EPC or construction project in the company portfolio.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Project title",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "client": {
+          "type": "string",
+          "description": "Client name",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "location": {
+          "type": "string",
+          "description": "Project location in Oman",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "completionYear": {
+          "type": "string",
+          "description": "Year of handover",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "contractValue": {
+          "type": "string",
+          "description": "Quantified scope or value metric",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "category": {
+          "type": "string",
+          "description": "Discipline category",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "Completed scope and outcome description",
+          "minLength": 10,
+          "maxLength": 1200
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Portfolio image URL or Data URI",
+          "minLength": 5,
+          "maxLength": 350000
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": [
+        "title",
+        "client",
+        "location",
+        "completionYear",
+        "contractValue",
+        "category",
+        "description",
+        "imageUrl",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "TextOverride": {
+      "title": "TextOverride",
+      "description": "Inline text, heading, or style override for any element on the page.",
+      "type": "object",
+      "properties": {
+        "elementId": {
+          "type": "string",
+          "description": "Unique DOM/logical identifier of the editable text or block",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "textValue": {
+          "type": "string",
+          "description": "Edited text content",
+          "minLength": 0,
+          "maxLength": 5000
+        },
+        "textColor": {
+          "type": "string",
+          "description": "Optional custom hex or CSS color",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "fontSize": {
+          "type": "string",
+          "description": "Optional font size token",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "bgColor": {
+          "type": "string",
+          "description": "Optional background highlight color",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Whether the element is hidden by admin"
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        }
+      },
+      "required": [
+        "elementId",
+        "textValue",
+        "textColor",
+        "fontSize",
+        "bgColor",
+        "hidden",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "CustomBlock": {
+      "title": "CustomBlock",
+      "description": "Custom section block (heading, text, callout, or photo card) dynamically added by admin.",
+      "type": "object",
+      "properties": {
+        "sectionId": {
+          "type": "string",
+          "description": "Target section ID where the block appears",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "heading": {
+          "type": "string",
+          "description": "Block heading text",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "body": {
+          "type": "string",
+          "description": "Block paragraph or details",
+          "minLength": 0,
+          "maxLength": 3000
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional photo URL or uploaded Data URI",
+          "minLength": 0,
+          "maxLength": 350000
+        },
+        "bgColor": {
+          "type": "string",
+          "description": "Block background color hex",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "textColor": {
+          "type": "string",
+          "description": "Heading/text color hex",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        }
+      },
+      "required": [
+        "sectionId",
+        "heading",
+        "body",
+        "imageUrl",
+        "bgColor",
+        "textColor",
+        "authorId",
+        "updatedAt"
+      ]
+    },
+    "ClientInquiry": {
+      "title": "ClientInquiry",
+      "description": "Client inquiry for EPC contracting or skilled/unskilled manpower supply.",
+      "type": "object",
+      "properties": {
+        "clientName": {
+          "type": "string",
+          "description": "Contact person full name",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Client organization name",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact email address (PII)",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number (PII)",
+          "minLength": 5,
+          "maxLength": 50
+        },
+        "inquiryType": {
+          "type": "string",
+          "description": "Service category requested",
+          "enum": [
+            "Civil & Structural Works",
+            "Earth Works & Excavation",
+            "Skilled & Unskilled Manpower Supply",
+            "Mechanical & Electrical Works",
+            "Pipeline & Special Structures",
+            "Turnkey EPC Tender Inquiry"
+          ],
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "projectLocation": {
+          "type": "string",
+          "description": "Proposed project site location",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "manpowerDetails": {
+          "type": "string",
+          "description": "Requested trades or headcount breakdown",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "message": {
+          "type": "string",
+          "description": "Detailed scope or inquiry message",
+          "minLength": 10,
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "description": "Review status",
+          "enum": ["new", "reviewed", "archived"],
+          "minLength": 3,
+          "maxLength": 20
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the submitting user or 'public_visitor' if unauthenticated",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Submission server timestamp"
+        }
+      },
+      "required": [
+        "clientName",
+        "companyName",
+        "email",
+        "phone",
+        "inquiryType",
+        "projectLocation",
+        "manpowerDetails",
+        "message",
+        "status",
+        "authorId",
+        "createdAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted administrator lookup document.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Admin email",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp"
+        }
+      },
+      "required": ["email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/siteConfig/{configId}": {
+      "schema": { "$ref": "#/entities/SiteConfig" },
+      "description": "Global site configuration document ('main')"
+    },
+    "/coreServices/{serviceId}": {
+      "schema": { "$ref": "#/entities/CoreService" },
+      "description": "Core services and work types cards"
+    },
+    "/runningProjects/{projectId}": {
+      "schema": { "$ref": "#/entities/RunningProject" },
+      "description": "Ongoing project sites"
+    },
+    "/galleryPhotos/{photoId}": {
+      "schema": { "$ref": "#/entities/GalleryPhoto" },
+      "description": "Photo gallery and carousel items"
+    },
+    "/completedProjects/{projectId}": {
+      "schema": { "$ref": "#/entities/CompletedProject" },
+      "description": "Completed portfolio projects"
+    },
+    "/textOverrides/{overrideId}": {
+      "schema": { "$ref": "#/entities/TextOverride" },
+      "description": "Inline text, heading, and style overrides across all page elements"
+    },
+    "/customBlocks/{blockId}": {
+      "schema": { "$ref": "#/entities/CustomBlock" },
+      "description": "Custom blocks dynamically added to any section by admin"
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/ClientInquiry" },
+      "description": "Client project and manpower inquiries (PII isolated)"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted admin registry"
+    }
+  }
+}
