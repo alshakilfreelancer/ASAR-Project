@@ -323,6 +323,53 @@ export function createEngineeringSvgDataUri(
 }
 
 /**
+ * Maps any category, title, or work type to a guaranteed high-fidelity architectural vector SVG data URI.
+ * Guaranteed to never fail, never 404, and require zero network requests.
+ */
+export function getFallbackSvgForCategory(
+  category = 'Civil',
+  title = 'Al Sahab Al Rashid EPC Contracting',
+  location = 'Muscat, Sultanate of Oman'
+): string {
+  const cat = (category || '').toLowerCase();
+  let scene: EngineeringSceneType = 'civil';
+  if (cat.includes('earth') || cat.includes('excavat') || cat.includes('grad') || cat.includes('slope')) {
+    scene = 'earth';
+  } else if (cat.includes('manpower') || cat.includes('team') || cat.includes('workforce') || cat.includes('specialist') || cat.includes('welder')) {
+    scene = 'manpower';
+  } else if (cat.includes('mep') || cat.includes('mech') || cat.includes('elect') || cat.includes('steel') || cat.includes('fabricat')) {
+    scene = 'mep';
+  } else if (cat.includes('tank') || cat.includes('pipe') || cat.includes('silo')) {
+    scene = 'pipeline';
+  } else if (cat.includes('tower') || cat.includes('substation') || cat.includes('power') || cat.includes('grid')) {
+    scene = 'substation';
+  } else if (cat.includes('culvert') || cat.includes('drain') || cat.includes('flood') || cat.includes('trench')) {
+    scene = 'culvert';
+  } else if (cat.includes('port') || cat.includes('marine') || cat.includes('coast')) {
+    scene = 'port';
+  }
+  return createEngineeringSvgDataUri(scene, title, location);
+}
+
+/**
+ * Returns a verified image URL, or returns a crisp category-specific vector SVG illustration if missing.
+ */
+export function getSafeImageUrl(
+  url?: string | null,
+  category = 'Civil Works',
+  title = 'Al Sahab Al Rashid Trad. Con. LLC',
+  location = 'Muscat, Oman'
+): string {
+  if (url && (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://'))) {
+    return url;
+  }
+  if (url && url.trim().length > 0) {
+    return url.trim();
+  }
+  return getFallbackSvgForCategory(category, title, location);
+}
+
+/**
  * High-Clarity Corporate Emblem Logo for "Al Sahab Al Rashid Trad. Con. LLC" (ASAR)
  * Designed for high-impact enlargement (viewBox 240 240), crisp geometric contrast,
  * rich royal navy (#1e3a8a) & industrial gold/orange (#f97316), and clear ASAR brand lettering.
@@ -1262,7 +1309,7 @@ export function compressUploadedImageFile(file: File, maxWidth = 960, quality = 
  * (HTML5 + Tailwind CSS CDN + Vanilla JS + Interactive Admin Edit Mode + Supabase Persistence Adapter)
  * containing all current edited state, custom blocks, text overrides, and Google Maps link.
  */
-export function exportStandaloneHtmlFile(
+export function generateStandaloneHtmlString(
   config: SiteConfigData,
   services: CoreServiceItem[],
   runningProjects: RunningProjectItem[],
@@ -1271,7 +1318,7 @@ export function exportStandaloneHtmlFile(
   coreValues: CoreValueItem[] = DEFAULT_CORE_VALUES,
   supabaseUrl = 'https://utblsxterubtziionaja.supabase.co',
   supabaseAnonKey = 'sb_publishable_WEybADSkx1-kQdyJvHI3_Q_j9JYkFIZ'
-) {
+): string {
   const mapLink = config.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK;
   const statePayload = JSON.stringify(
     { config: { ...config, officeMapLink: mapLink }, services, runningProjects, galleryPhotos, completedProjects, coreValues },
@@ -1279,7 +1326,7 @@ export function exportStandaloneHtmlFile(
     2
   );
 
-  const htmlContent = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
@@ -1497,10 +1544,41 @@ export function exportStandaloneHtmlFile(
       document.getElementById('supabaseInquiryForm').reset();
     }
 
+    function handleImgErr(img, scene, label) {
+      if (img.dataset.fallbackApplied) return;
+      img.dataset.fallbackApplied = 'true';
+      img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(\`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450">
+          <defs>
+            <linearGradient id="bgG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1e3a8a"/>
+              <stop offset="100%" stop-color="#0f172a"/>
+            </linearGradient>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334155" stroke-width="0.8" />
+            </pattern>
+          </defs>
+          <rect width="800" height="450" fill="url(#bgG)"/>
+          <rect width="800" height="450" fill="url(#grid)"/>
+          <g fill="none" stroke="#f97316" stroke-width="2.5">
+            <line x1="200" y1="360" x2="200" y2="90" />
+            <line x1="140" y1="110" x2="420" y2="110" />
+            <line x1="200" y1="90" x2="330" y2="110" stroke-width="1.5" />
+          </g>
+          <rect x="250" y="160" width="300" height="200" fill="#ffffff" stroke="#f97316" stroke-width="3" rx="8" />
+          <text x="400" y="240" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="800" fill="#1e3a8a">AL SAHAB AL RASHID</text>
+          <text x="400" y="275" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="600" fill="#f97316">\${label || 'EPC CONTRACTING · OMAN'}</text>
+          <rect x="24" y="385" width="752" height="42" rx="6" fill="#09132c" stroke="#334155" />
+          <text x="45" y="411" font-family="sans-serif" font-size="13" font-weight="700" fill="#f8fafc">\${label || 'CIVIL &amp; STRUCTURAL WORKS'}</text>
+          <text x="755" y="411" text-anchor="end" font-family="monospace" font-size="12" font-weight="600" fill="#f97316">WWWASAR.COM · OMAN</text>
+        </svg>
+      \`);
+    }
+
     function renderCollections() {
       document.getElementById('servicesGrid').innerHTML = STATE.services.map(s => \`
-        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <img src="\${s.imageUrl}" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <img src="\${s.imageUrl}" onerror="handleImgErr(this, 'civil', '\${(s.title || '').replace(/['\"\\\\]/g, '')}')" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
           <div class="p-5 space-y-2">
             <div class="editable text-xs font-bold text-[#f97316]">\${s.categoryCode}</div>
             <h3 class="editable font-bold text-lg">\${s.title}</h3>
@@ -1510,8 +1588,8 @@ export function exportStandaloneHtmlFile(
       \`).join('');
 
       document.getElementById('runningGrid').innerHTML = STATE.runningProjects.map(p => \`
-        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <img src="\${p.imageUrl}" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <img src="\${p.imageUrl}" onerror="handleImgErr(this, 'earth', '\${(p.title || '').replace(/['\"\\\\]/g, '')}')" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
           <div class="p-5 space-y-2">
             <div class="editable text-xs font-semibold text-[#1e3a8a]">\${p.location} · \${p.progress}%</div>
             <h3 class="editable font-bold text-lg">\${p.title}</h3>
@@ -1521,8 +1599,8 @@ export function exportStandaloneHtmlFile(
       \`).join('');
 
       document.getElementById('galleryGrid').innerHTML = STATE.galleryPhotos.map(g => \`
-        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <img src="\${g.imageUrl}" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <img src="\${g.imageUrl}" onerror="handleImgErr(this, 'manpower', '\${(g.title || '').replace(/['\"\\\\]/g, '')}')" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
           <div class="p-4 space-y-1">
             <h4 class="editable font-bold text-sm">\${g.title}</h4>
             <p class="editable text-xs text-slate-600">\${g.caption}</p>
@@ -1531,8 +1609,8 @@ export function exportStandaloneHtmlFile(
       \`).join('');
 
       document.getElementById('portfolioGrid').innerHTML = STATE.completedProjects.map(c => \`
-        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <img src="\${c.imageUrl}" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <img src="\${c.imageUrl}" onerror="handleImgErr(this, 'mep', '\${(c.title || '').replace(/['\"\\\\]/g, '')}')" onclick="changeImagePrompt(this)" class="w-full aspect-video object-cover" />
           <div class="p-5 space-y-2">
             <div class="editable text-xs text-[#f97316] font-semibold">\${c.client} · \${c.completionYear}</div>
             <h3 class="editable font-bold text-lg">\${c.title}</h3>
@@ -1576,7 +1654,28 @@ export function exportStandaloneHtmlFile(
   </script>
 </body>
 </html>`;
+}
 
+export function exportStandaloneHtmlFile(
+  config: SiteConfigData,
+  services: CoreServiceItem[],
+  runningProjects: RunningProjectItem[],
+  galleryPhotos: GalleryPhotoItem[],
+  completedProjects: CompletedProjectItem[],
+  coreValues: CoreValueItem[] = DEFAULT_CORE_VALUES,
+  supabaseUrl = 'https://utblsxterubtziionaja.supabase.co',
+  supabaseAnonKey = 'sb_publishable_WEybADSkx1-kQdyJvHI3_Q_j9JYkFIZ'
+) {
+  const htmlContent = generateStandaloneHtmlString(
+    config,
+    services,
+    runningProjects,
+    galleryPhotos,
+    completedProjects,
+    coreValues,
+    supabaseUrl,
+    supabaseAnonKey
+  );
   const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

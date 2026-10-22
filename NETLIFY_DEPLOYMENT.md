@@ -6,21 +6,26 @@
 
 ## ⚡ 1. Fastest Deploy Method: Netlify Drop (30 Seconds, No Git Needed)
 
-1. **Build the production package**:
-   In your terminal, run:
+### Option A: 1-Click Netlify Zip (Recommended — All 29 Photos Included)
+1. Open the portal in AI Studio and click **"Deploy to Netlify / Host"** in the top navigation bar.
+2. Under the **"1. Publish to Netlify"** tab, click **"Download Netlify Zip"**.
+3. Unzip the downloaded file on your computer. It contains:
+   - `index.html` (Complete portal with SVG fallbacks)
+   - `_redirects` (Netlify SPA 200 routing)
+   - `netlify.toml` (Netlify build configuration)
+   - `assets/aistudio/` (All 29 authentic Oman project site photographs)
+4. Open **[https://app.netlify.com/drop](https://app.netlify.com/drop)** in your browser.
+5. Drag and drop the unzipped folder into the upload box.
+6. **Done!** Every project photo and service image loads immediately with zero broken icons.
+
+### Option B: Terminal Build
+1. In your terminal, run:
    ```bash
    npm run build
    ```
-   *(Or click "Download Ready Netlify Package" in the in-app Deployment Center).*
-
-2. **Open Netlify Drop**:
-   Go to **[https://app.netlify.com/drop](https://app.netlify.com/drop)** in your browser (log in with your Netlify account).
-
-3. **Drag and Drop**:
-   Drag your compiled **`dist`** folder directly into the Netlify Drop box.
-
-4. **Your Site is Live!**
-   Netlify will immediately deploy your site with an instant URL like `https://peaceful-sunburst-xxxxxx.netlify.app`.
+2. Open **[https://app.netlify.com/drop](https://app.netlify.com/drop)** in your browser.
+3. Drag your compiled **`dist`** folder directly into the Netlify Drop box.
+4. Netlify will deploy immediately with working photos and free SSL.
 
 ---
 

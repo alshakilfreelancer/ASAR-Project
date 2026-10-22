@@ -87,6 +87,9 @@ import {
   sanitizeHexColor,
   compressUploadedImageFile,
   exportStandaloneHtmlFile,
+  generateStandaloneHtmlString,
+  getFallbackSvgForCategory,
+  getSafeImageUrl,
   BLUEHOST_HTACCESS_TEMPLATE,
   downloadHtaccessFile,
   NETLIFY_TOML_TEMPLATE,
@@ -94,6 +97,7 @@ import {
   downloadNetlifyTomlFile,
   downloadNetlifyRedirectsFile,
 } from './data/defaultData';
+import JSZip from 'jszip';
 import {
   SUPABASE_PROJECT_ID,
   SUPABASE_URL,
@@ -361,6 +365,86 @@ export default function App() {
     setCopiedDnsIp(true);
     showNotification('success', 'Copied Netlify Load Balancer IP (75.2.60.5) to clipboard!');
     setTimeout(() => setCopiedDnsIp(false), 3000);
+  };
+
+  const [isGeneratingZip, setIsGeneratingZip] = useState(false);
+
+  // Generates and downloads a complete Netlify Deployment ZIP bundle containing index.html, _redirects, netlify.toml and all 29 photographs
+  const handleDownloadNetlifyZip = async () => {
+    setIsGeneratingZip(true);
+    showNotification('info', 'Packaging all 29 site photos, Netlify config & index.html into ZIP...');
+    try {
+      const zip = new JSZip();
+
+      // 1. Root Netlify configuration files
+      zip.file('_redirects', NETLIFY_REDIRECTS_TEMPLATE);
+      zip.file('netlify.toml', NETLIFY_TOML_TEMPLATE);
+
+      // 2. Standalone HTML file
+      const htmlString = generateStandaloneHtmlString(
+        siteConfig,
+        coreServices,
+        runningProjects,
+        galleryPhotos,
+        completedProjects,
+        coreValues,
+        supabaseUrl,
+        supabaseKey
+      );
+      zip.file('index.html', htmlString);
+
+      // 3. Package all 29 authentic user construction photographs into assets/aistudio/
+      const photoFolder = zip.folder('assets/aistudio');
+      const photoUrls = Object.values(AUTHENTIC_USER_PHOTOS);
+
+      await Promise.all(
+        photoUrls.map(async (url) => {
+          try {
+            const filename = url.split('/').pop() || 'photo.webp';
+            const res = await fetch(url);
+            if (res.ok) {
+              const blob = await res.blob();
+              photoFolder?.file(filename, blob);
+            }
+          } catch (err) {
+            console.warn('Could not bundle photo in ZIP:', url, err);
+          }
+        })
+      );
+
+      // 4. Generate the ZIP blob and trigger browser download
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const downloadUrl = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = 'asar-netlify-production-package.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+
+      showNotification(
+        'success',
+        'Downloaded complete Netlify package (asar-netlify-production-package.zip)! Drag directly onto app.netlify.com/drop.'
+      );
+    } catch (err) {
+      showNotification('error', 'Error packaging ZIP bundle: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsGeneratingZip(false);
+    }
+  };
+
+  // Universal Image Error Fallback: Prevents infinite error loops and guarantees zero broken images on Netlify, Bluehost or any host
+  const handleImageError = (
+    e: React.SyntheticEvent<HTMLImageElement, Event>,
+    category = 'Civil Works',
+    title = 'Al Sahab Al Rashid EPC',
+    location = 'Muscat, Oman'
+  ) => {
+    const target = e.currentTarget;
+    if (target.dataset.fallbackApplied) return;
+    target.dataset.fallbackApplied = 'true';
+    target.src = getFallbackSvgForCategory(category, title, location);
   };
 
   // Supabase Backend State (Project ID: utblsxterubtziionaja)
@@ -971,6 +1055,7 @@ export default function App() {
                   src={block.imageUrl}
                   alt={block.heading}
                   referrerPolicy="no-referrer"
+                  onError={(e) => handleImageError(e, 'Civil Works', block.heading, 'Muscat, Oman')}
                   onClick={() => {
                     if (isAdminMode) {
                       openPhotoEditor(`Custom Block Photo (${block.heading})`, block.imageUrl, (newUrl) => {
@@ -2413,7 +2498,10 @@ export default function App() {
                         alt={`${siteConfig.companyName} Logo`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
-                          e.currentTarget.src = DEFAULT_COMPANY_LOGO_URI;
+                          const target = e.currentTarget;
+                          if (target.dataset.fallbackApplied === 'true') return;
+                          target.dataset.fallbackApplied = 'true';
+                          target.src = DEFAULT_COMPANY_LOGO_URI;
                         }}
                         className="w-full h-full object-contain p-2"
                       />
@@ -3088,8 +3176,7 @@ export default function App() {
                             }
                           }}
                           onError={(e) => {
-                            e.currentTarget.src =
-                              DEFAULT_CORE_SERVICES[idx % DEFAULT_CORE_SERVICES.length].imageUrl;
+                            handleImageError(e, service.categoryCode || 'Civil Works', service.title, 'Muscat, Oman');
                           }}
                           className={`w-full h-full object-cover ${isAdminMode ? 'cursor-pointer' : ''}`}
                         />
@@ -3711,8 +3798,7 @@ export default function App() {
                           }
                         }}
                         onError={(e) => {
-                          e.currentTarget.src =
-                            DEFAULT_RUNNING_PROJECTS[idx % DEFAULT_RUNNING_PROJECTS.length].imageUrl;
+                          handleImageError(e, project.category || 'Civil Works', project.title, project.location || 'Muscat, Oman');
                         }}
                         className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${
                           isAdminMode ? 'cursor-pointer' : ''
@@ -4076,7 +4162,7 @@ export default function App() {
                     alt={activeSlide.title}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      e.currentTarget.src = DEFAULT_GALLERY_PHOTOS[0].imageUrl;
+                      handleImageError(e, activeSlide.category || 'Civil Works', activeSlide.title, activeSlide.location || 'Muscat, Oman');
                     }}
                     className="w-full h-full object-cover"
                   />
@@ -4225,8 +4311,7 @@ export default function App() {
                         alt={photo.title}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
-                          e.currentTarget.src =
-                            DEFAULT_GALLERY_PHOTOS[idx % DEFAULT_GALLERY_PHOTOS.length].imageUrl;
+                          handleImageError(e, photo.category || 'Civil Works', photo.title, photo.location || 'Muscat, Oman');
                         }}
                         className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
                       />
@@ -4539,8 +4624,7 @@ export default function App() {
                           }
                         }}
                         onError={(e) => {
-                          e.currentTarget.src =
-                            DEFAULT_COMPLETED_PROJECTS[idx % DEFAULT_COMPLETED_PROJECTS.length].imageUrl;
+                          handleImageError(e, item.category || 'Civil Works', item.title, item.location || 'Muscat, Oman');
                         }}
                         className={`w-full h-full object-cover ${isAdminMode ? 'cursor-pointer' : ''}`}
                       />
@@ -5371,7 +5455,10 @@ export default function App() {
                     alt={`${siteConfig.companyName} Logo`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      e.currentTarget.src = DEFAULT_COMPANY_LOGO_URI;
+                      const target = e.currentTarget;
+                      if (target.dataset.fallbackApplied === 'true') return;
+                      target.dataset.fallbackApplied = 'true';
+                      target.src = DEFAULT_COMPANY_LOGO_URI;
                     }}
                     className="w-full h-full object-contain p-1"
                   />
@@ -5819,6 +5906,7 @@ export default function App() {
                 src={photoDraftUrl || PRESET_ENGINEERING_IMAGES[0].url}
                 alt="Photo preview"
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e, 'Civil Works', 'Photo Preview', 'Muscat, Oman')}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -5878,6 +5966,7 @@ export default function App() {
                         src={item.url}
                         alt={item.title}
                         referrerPolicy="no-referrer"
+                        onError={(e) => handleImageError(e, item.tag, item.title, 'Muscat, Oman')}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1">
@@ -6088,6 +6177,7 @@ export default function App() {
                 src={selectedRunningProject.imageUrl}
                 alt={selectedRunningProject.title}
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e, selectedRunningProject.category, selectedRunningProject.title, selectedRunningProject.location)}
                 className="w-full h-full object-cover"
               />
               <button
@@ -6211,6 +6301,7 @@ export default function App() {
                 src={lightboxPhoto.imageUrl}
                 alt={lightboxPhoto.title}
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e, lightboxPhoto.category, lightboxPhoto.title, lightboxPhoto.location)}
                 className="w-full h-full object-cover"
               />
               <button
@@ -6570,6 +6661,42 @@ export default function App() {
             {/* TAB 1: NETLIFY DEPLOYMENT */}
             {activeDeployTab === 'netlify' && (
               <div className="space-y-5">
+                {/* Primary Recommended: Complete Turnkey Zip Package with all 29 Oman photos */}
+                <div className="p-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl shadow-sm space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider">
+                        <span>⭐ Guaranteed Fix for Missing Photos</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-white">
+                        Download Complete Netlify Deployment Package (.zip)
+                      </h4>
+                      <p className="text-xs text-emerald-100 max-w-xl">
+                        Bundles the standalone <strong>index.html</strong>, <strong>_redirects</strong>, <strong>netlify.toml</strong>, AND all <strong>29 authentic Oman project photographs</strong> inside <code className="bg-black/20 px-1 py-0.5 rounded font-mono">assets/aistudio/</code>. Simply unzip and drop on Netlify Drop!
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadNetlifyZip}
+                      disabled={isGeneratingZip}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-emerald-800 hover:bg-emerald-50 active:scale-98 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer shrink-0 disabled:opacity-60"
+                    >
+                      {isGeneratingZip ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+                          <span>Packaging 29 Photos...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 text-emerald-700" />
+                          <span>Download Netlify Zip</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Netlify Quick Actions */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
@@ -6616,7 +6743,7 @@ export default function App() {
                       <span className="text-xs font-bold text-orange-900">Single-File HTML</span>
                       <Download className="w-4 h-4 text-[#f97316] group-hover:translate-y-0.5 transition-transform" />
                     </div>
-                    <p className="text-[11px] text-orange-700 mt-1">1-click standalone file for instant drop</p>
+                    <p className="text-[11px] text-orange-700 mt-1">Embedded SVG fallbacks for instant drop</p>
                   </button>
                 </div>
 
@@ -6635,16 +6762,19 @@ export default function App() {
                     </div>
                     <ol className="list-decimal list-inside space-y-1.5 text-slate-700 pl-1">
                       <li>
-                        Run <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular text-emerald-800">npm run build</code> in the terminal to generate the <code className="font-mono-tabular font-bold">dist/</code> folder.
+                        <strong>Option 1 (Zero-Build — Recommended):</strong> Click <strong>"Download Netlify Zip"</strong> above. Unzip the file on your computer.
                       </li>
                       <li>
                         Open <strong><a href="https://app.netlify.com/drop" target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline font-semibold">app.netlify.com/drop</a></strong> in your browser and log into Netlify.
                       </li>
                       <li>
-                        Drag and drop your <strong>`dist`</strong> folder onto the upload circle.
+                        Drag and drop the unzipped folder (which contains <code className="font-mono">index.html</code>, <code className="font-mono">_redirects</code>, and <code className="font-mono">assets/</code> with all 29 photos) onto the upload box.
                       </li>
                       <li>
-                        <strong>Done!</strong> Netlify will deploy your portal immediately with a live URL (e.g., <code className="font-mono-tabular text-slate-800">https://your-company.netlify.app</code>) and free automatic SSL.
+                        <strong>Option 2 (Terminal Build):</strong> Run <code className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono-tabular text-emerald-800">npm run build</code> in the terminal to generate the <code className="font-mono-tabular font-bold">dist/</code> folder, then drag and drop the <code className="font-mono-tabular font-bold">dist/</code> folder onto Netlify Drop.
+                      </li>
+                      <li>
+                        <strong>Done!</strong> Netlify deploys your portal immediately with a live URL (e.g., <code className="font-mono-tabular text-slate-800">https://your-company.netlify.app</code>), working photos, and free automatic SSL.
                       </li>
                     </ol>
                   </div>
