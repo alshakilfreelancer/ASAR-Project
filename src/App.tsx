@@ -114,11 +114,16 @@ import {
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
 // Deployment & Content Version Sync: Ensures EVERY visitor on mobile & desktop sees the newest updates immediately
-const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v9_20261022';
+const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v10_20261023';
 
 function enforceLatestBuildVersion(): void {
   if (typeof window === 'undefined') return;
   try {
+    // Ensure viewport meta is set to 1280px so mobile browsers render the complete Desktop Mode layout
+    const vp = document.getElementById('asar-viewport') || document.querySelector('meta[name="viewport"]');
+    if (vp) {
+      vp.setAttribute('content', 'width=1280');
+    }
     const recordedVersion = window.localStorage.getItem('asar_app_build_version');
     if (recordedVersion !== CURRENT_BUILD_VERSION) {
       // Version mismatch: wipe any outdated cached content from previous deploys
@@ -151,17 +156,17 @@ function enforceLatestBuildVersion(): void {
 enforceLatestBuildVersion();
 
 const STORAGE_KEYS = {
-  SITE_CONFIG: 'asar_cms_site_config_v9',
-  SERVICES: 'asar_cms_core_services_v9',
-  RUNNING: 'asar_cms_running_projects_v9',
-  GALLERY: 'asar_cms_gallery_photos_v9',
-  COMPLETED: 'asar_cms_completed_projects_v9',
-  KPIS: 'asar_cms_kpi_cards_v9',
-  VALUES: 'asar_cms_core_values_v9',
-  MANPOWER: 'asar_cms_manpower_groups_v9',
-  TEXT_OVERRIDES: 'asar_cms_text_overrides_v9',
-  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v9',
-  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v9',
+  SITE_CONFIG: 'asar_cms_site_config_v10',
+  SERVICES: 'asar_cms_core_services_v10',
+  RUNNING: 'asar_cms_running_projects_v10',
+  GALLERY: 'asar_cms_gallery_photos_v10',
+  COMPLETED: 'asar_cms_completed_projects_v10',
+  KPIS: 'asar_cms_kpi_cards_v10',
+  VALUES: 'asar_cms_core_values_v10',
+  MANPOWER: 'asar_cms_manpower_groups_v10',
+  TEXT_OVERRIDES: 'asar_cms_text_overrides_v10',
+  CUSTOM_BLOCKS: 'asar_cms_custom_blocks_v10',
+  LOCAL_INQUIRIES: 'asar_cms_local_inquiries_v10',
   GITHUB_CONFIG: 'asar_cms_github_sync_config_v1',
 };
 
@@ -201,6 +206,25 @@ function normalizeCorporateSiteConfig(raw: Partial<SiteConfigData>): SiteConfigD
     merged.aboutBackground = merged.aboutBackground
       .replace(/Al Sahab Al Rashid Trad\. Con\. LLC/g, 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C')
       .replace(/Al Sahab Al Rashid Trad\. Cont\. Co LLL/g, 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C');
+  }
+  // Automatically upgrade legacy default Aim, Vision, and Mission to official screenshot text
+  if (
+    !merged.ourAim ||
+    merged.ourAim.includes('To serve as the Sultanate of Oman')
+  ) {
+    merged.ourAim = DEFAULT_SITE_CONFIG.ourAim;
+  }
+  if (
+    !merged.ourVision ||
+    merged.ourVision.includes('To set the regional benchmark in civil infrastructure')
+  ) {
+    merged.ourVision = DEFAULT_SITE_CONFIG.ourVision;
+  }
+  if (
+    !merged.ourMission ||
+    merged.ourMission.includes('To deliver cost-effective, structurally resilient')
+  ) {
+    merged.ourMission = DEFAULT_SITE_CONFIG.ourMission;
   }
   merged.companyLogoUrl = merged.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI;
   merged.officeMapLink = merged.officeMapLink || OFFICIAL_GOOGLE_MAPS_LINK;
@@ -2316,8 +2340,8 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
             </div>
           </div>
 
-          {/* Zone 2: 5 concise single-line navigation links */}
-          <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-600">
+          {/* Zone 2: 5 concise single-line navigation links (Always visible in Desktop Mode on both Mobile & Desktop) */}
+          <nav className="flex items-center gap-6 text-sm font-medium text-slate-600">
             <a
               href="#services"
               onClick={(e) => {
@@ -2370,33 +2394,37 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
             </a>
           </nav>
 
-          {/* Zone 3: Primary Actions (Netlify Publish, Connect Domain & Admin Mode) */}
+          {/* Zone 3: Primary Actions (Netlify Publish & Connect Domain only in Google AI Studio, Admin Mode for all) */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveDeployTab('netlify');
-                setShowBluehostModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 rounded-lg transition-colors cursor-pointer shadow-2xs"
-              title="Publish this website to Netlify (Fast 30-sec Drag & Drop with free SSL)"
-            >
-              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">Publish to Netlify</span>
-              <span className="sm:hidden">Netlify</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveDeployTab('domain');
-                setShowBluehostModal(true);
-              }}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#1e3a8a] bg-blue-50/90 hover:bg-blue-100 border border-blue-200/90 rounded-lg transition-colors cursor-pointer"
-              title="Connect your custom domain and host (wwwasar.com) through Netlify DNS"
-            >
-              <Globe className="w-3.5 h-3.5 text-[#1e3a8a]" />
-              <span>Connect Domain</span>
-            </button>
+            {isAiStudioEnv && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDeployTab('netlify');
+                    setShowBluehostModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  title="Publish this website to Netlify (Fast 30-sec Drag & Drop with free SSL)"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Publish to Netlify</span>
+                  <span className="sm:hidden">Netlify</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDeployTab('domain');
+                    setShowBluehostModal(true);
+                  }}
+                  className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#1e3a8a] bg-blue-50/90 hover:bg-blue-100 border border-blue-200/90 rounded-lg transition-colors cursor-pointer"
+                  title="Connect your custom domain and host (wwwasar.com) through Netlify DNS"
+                >
+                  <Globe className="w-3.5 h-3.5 text-[#1e3a8a]" />
+                  <span>Connect Domain</span>
+                </button>
+              </>
+            )}
             {isAiStudioEnv ? (
               <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-300 rounded-lg p-0.5">
                 <span className="hidden xl:inline-block px-2 text-[10px] font-bold text-amber-900 uppercase tracking-wider">
@@ -2527,7 +2555,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
               })}
             </div>
 
-            <div className="hidden xl:flex items-center gap-3 text-xs text-slate-500 whitespace-nowrap shrink-0">
+            <div className="flex items-center gap-3 text-xs text-slate-500 whitespace-nowrap shrink-0">
               <a
                 href={activeGoogleMapLink}
                 target="_blank"
@@ -2736,41 +2764,45 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
                 <span>Export Single-File HTML</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveDeployTab('netlify');
-                  setShowBluehostModal(true);
-                }}
-                className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-              >
-                <Cloud className="w-3.5 h-3.5 text-emerald-100" />
-                <span>Netlify Publish</span>
-              </button>
+              {isAiStudioEnv && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDeployTab('netlify');
+                      setShowBluehostModal(true);
+                    }}
+                    className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Cloud className="w-3.5 h-3.5 text-emerald-100" />
+                    <span>Netlify Publish</span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveDeployTab('domain');
-                  setShowBluehostModal(true);
-                }}
-                className="px-3.5 py-2 text-xs font-semibold bg-[#1e3a8a] text-white rounded-lg hover:bg-blue-900 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-              >
-                <Globe className="w-3.5 h-3.5 text-blue-200" />
-                <span>Connect Domain & Host</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDeployTab('domain');
+                      setShowBluehostModal(true);
+                    }}
+                    className="px-3.5 py-2 text-xs font-semibold bg-[#1e3a8a] text-white rounded-lg hover:bg-blue-900 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-blue-200" />
+                    <span>Connect Domain & Host</span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveDeployTab('bluehost');
-                  setShowBluehostModal(true);
-                }}
-                className="px-3.5 py-2 text-xs font-semibold bg-slate-700 text-white rounded-lg hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-              >
-                <Server className="w-3.5 h-3.5 text-slate-300" />
-                <span>Bluehost cPanel</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDeployTab('bluehost');
+                      setShowBluehostModal(true);
+                    }}
+                    className="px-3.5 py-2 text-xs font-semibold bg-slate-700 text-white rounded-lg hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Server className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Bluehost cPanel</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -5130,7 +5162,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
                 )}
                 {renderEditableElement(
                   'sec-about-heading',
-                  'About Al Sahab Al Rashid Trad. Con. LLC',
+                  'About Al Sahab Al Rashid Trad. & Cont. Co L.L.C',
                   'h2',
                   'text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight',
                   { color: siteConfig.primaryNavy }
@@ -5369,72 +5401,147 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {coreValues.map((valItem) => (
-                  <div
-                    key={valItem.id}
-                    className="p-5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2 flex flex-col justify-between"
-                  >
-                    {isAdminMode ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
+                {coreValues.map((valItem) => {
+                  const bulletLines = (valItem.description || '')
+                    .split('\n')
+                    .map((line) => line.replace(/^[•\-*]\s*/, '').trim())
+                    .filter(Boolean);
+
+                  return (
+                    <div
+                      key={valItem.id}
+                      className="p-5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-3 flex flex-col justify-between"
+                    >
+                      {isAdminMode ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={valItem.code}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setCoreValues((prev) =>
+                                  prev.map((c) => (c.id === valItem.id ? { ...c, code: v } : c))
+                                );
+                              }}
+                              className="w-24 px-2 py-0.5 text-xs font-mono-tabular font-bold bg-white border border-slate-300 rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCoreValues((prev) => prev.filter((c) => c.id !== valItem.id))
+                              }
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           <input
                             type="text"
-                            value={valItem.code}
+                            value={valItem.title}
                             onChange={(e) => {
                               const v = e.target.value;
                               setCoreValues((prev) =>
-                                prev.map((c) => (c.id === valItem.id ? { ...c, code: v } : c))
+                                prev.map((c) => (c.id === valItem.id ? { ...c, title: v } : c))
                               );
                             }}
-                            className="w-24 px-2 py-0.5 text-xs font-mono-tabular font-bold bg-white border border-slate-300 rounded"
+                            className="w-full px-2 py-1 text-sm font-bold bg-white border border-slate-300 rounded"
                           />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCoreValues((prev) => prev.filter((c) => c.id !== valItem.id))
-                            }
-                            className="text-red-500 hover:text-red-700"
+                          <textarea
+                            rows={5}
+                            value={valItem.description}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setCoreValues((prev) =>
+                                prev.map((c) => (c.id === valItem.id ? { ...c, description: v } : c))
+                              );
+                            }}
+                            className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          <div
+                            className="text-xs font-mono-tabular font-bold"
+                            style={{ color: siteConfig.accentOrange }}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            {valItem.code}
+                          </div>
+                          <h4 className="text-lg font-bold text-slate-900">{valItem.title}</h4>
+                          {bulletLines.length > 1 ? (
+                            <ul className="space-y-1.5 text-xs sm:text-sm text-slate-700 leading-relaxed list-disc pl-4">
+                              {bulletLines.map((point, idx) => (
+                                <li key={idx}>{point}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                              {valItem.description}
+                            </p>
+                          )}
                         </div>
-                        <input
-                          type="text"
-                          value={valItem.title}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setCoreValues((prev) =>
-                              prev.map((c) => (c.id === valItem.id ? { ...c, title: v } : c))
-                            );
-                          }}
-                          className="w-full px-2 py-1 text-sm font-bold bg-white border border-slate-300 rounded"
-                        />
-                        <textarea
-                          rows={3}
-                          value={valItem.description}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setCoreValues((prev) =>
-                              prev.map((c) => (c.id === valItem.id ? { ...c, description: v } : c))
-                            );
-                          }}
-                          className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded"
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div
-                          className="text-xs font-mono-tabular font-bold"
-                          style={{ color: siteConfig.accentOrange }}
-                        >
-                          {valItem.code}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Official Corporate Charter Sheet (OUR AIM, OUR VISION, OUR MISSION & VALUES — Exact Match to Official Document) */}
+            <div className="rounded-2xl border border-orange-200/80 bg-[#f9ebe2]/75 p-8 lg:p-10 space-y-6 text-slate-800 shadow-2xs">
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
+                  {renderEditableElement('charter-aim-title', 'OUR AIM :', 'span')}
+                </h4>
+                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
+                  {siteConfig.ourAim}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
+                  {renderEditableElement('charter-vision-title', 'OUR VISION:', 'span')}
+                </h4>
+                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
+                  {siteConfig.ourVision}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
+                  {renderEditableElement('charter-mission-title', 'OUR MISSION:', 'span')}
+                </h4>
+                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
+                  {siteConfig.ourMission}
+                </p>
+              </div>
+
+              <div className="space-y-4 pt-2">
+                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
+                  {renderEditableElement('charter-values-title', 'VALUES:', 'span')}
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {coreValues.map((valItem) => {
+                    const bulletLines = (valItem.description || '')
+                      .split('\n')
+                      .map((line) => line.replace(/^[•\-*]\s*/, '').trim())
+                      .filter(Boolean);
+
+                    return (
+                      <div key={`charter-${valItem.id}`} className="space-y-2">
+                        <div className="font-bold text-sm sm:text-base text-slate-900">
+                          {valItem.title}
                         </div>
-                        <h4 className="text-lg font-bold text-slate-900">{valItem.title}</h4>
-                        <p className="text-xs text-slate-600 leading-relaxed">{valItem.description}</p>
+                        <ul className="space-y-1.5 text-sm text-slate-800 list-disc pl-6">
+                          {bulletLines.map((point, idx) => (
+                            <li key={idx}>{point}</li>
+                          ))}
+                        </ul>
                       </div>
-                    )}
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -7578,7 +7685,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
                 <span>Protected Management Access</span>
               </div>
               <p>
-                To safeguard the live portal from unauthorized edits on public domains, Admin Mode requires password authentication. In Google AI Studio, access remains directly accessible.
+                To safeguard the live corporate portal from unauthorized edits on public domains, Admin Mode requires administrative password authentication.
               </p>
             </div>
 

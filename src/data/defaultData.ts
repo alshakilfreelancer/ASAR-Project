@@ -803,30 +803,30 @@ export const DEFAULT_CORE_VALUES: CoreValueItem[] = [
   {
     id: 'val-1',
     code: 'VALUE 01',
-    title: 'Integrity',
+    title: 'Integrity –',
     description:
-      'Transparent commercial tendering, ethical workforce welfare, and honest technical reporting at every project milestone.',
+      '• Support for doing the right thing.\n• Keep promises even if it takes extra effort\n• Won\'t turn our backs towards something wrong or unsafe\n• Take responsibility and be accountable for all our words and deeds',
   },
   {
     id: 'val-2',
     code: 'VALUE 02',
-    title: 'Commitment',
+    title: 'Commitment –',
     description:
-      'Unwavering dedication to client handover schedules, strict HSE protocols, and rapid manpower mobilization across Oman.',
+      '• Committed to ensure safety for everyone\n• Encourage employees to achieve their maximum potential\n• Work towards exceeding customer/client expectation\n• Appreciate the skills and abilities of others\n• Extra care for actions that affect the community we live in.',
   },
   {
     id: 'val-3',
     code: 'VALUE 03',
-    title: 'Excellence',
+    title: 'Excellence –',
     description:
-      'Precision engineering in structural concrete, earthwork compaction, ASME-grade welding, and industrial MEP installations.',
+      '• Keep raising the bar\n• Go the extra mile to deliver the best\n• Be Self-Motivated\n• Strive to innovate and create',
   },
   {
     id: 'val-4',
     code: 'VALUE 04',
-    title: 'Teamwork',
+    title: 'TeamWork-',
     description:
-      'Seamless collaboration between our civil/MEP engineers, site supervisors, skilled tradesmen, and client project directors.',
+      '• We are one\n• Listen to and learn from each other\n• Work with enthusiasm and appreciation\n• Combine our expertise and knowledge',
   },
 ];
 
@@ -844,11 +844,11 @@ export const DEFAULT_SITE_CONFIG: SiteConfigData = {
   aboutBackground:
     'Al Sahab Al Rashid Trad. & Cont. Co L.L.C (wwwasar.com) is an established Omani Engineering, Procurement, and Construction (EPC) and technical manpower contracting enterprise headquartered in Muscat, Sultanate of Oman. Built on rigorous HSE governance, engineering precision, and rapid site mobilization, our company partners with ministries, petrochemical operators, port authorities, and tier-one infrastructure developers to execute complex civil, earthwork, mechanical, electrical, and pipeline packages on schedule and within specification.',
   ourAim:
-    'To serve as the Sultanate of Oman’s most dependable turnkey construction and certified technical manpower partner, consistently achieving zero Lost Time Injury (LTI) milestones and first-time quality handovers on every site.',
+    'To work in a challenging environment that will emphasis our professional capabilities where optimum utilization of our skills and experience can contribute towards the growth of the organization.',
   ourVision:
-    'To set the regional benchmark in civil infrastructure, industrial MEP contracting, and specialized workforce mobilization supporting Oman Vision 2040 industrial and urban growth corridors.',
+    'To be the region\'s first choice EPC organization by exceeding the expectations of our clients, offering a bright career path to employees and ensuring sustainable growth for the community while preserving the environment.',
   ourMission:
-    'To deliver cost-effective, structurally resilient engineering works and immediately deployable trade specialists through disciplined project management, modern heavy plant, and uncompromising adherence to international quality and safety codes.',
+    'Excellence in Project, execution, Skills and experience, Sales, Use and Services with focus on Client and customer satisfaction; care for employees, community & environment and sustainable growth.',
   primaryNavy: '#1e3a8a',
   accentOrange: '#f97316',
   headingScale: 'standard',
@@ -1338,7 +1338,7 @@ export function generateStandaloneHtmlString(
 <html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=1280" />
   <title>${config.companyName} — ${config.tagline}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
