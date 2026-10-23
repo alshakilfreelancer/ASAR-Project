@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MapPin,
   Phone,
@@ -37,6 +37,17 @@ import {
   Cloud,
   Code2,
   FileSpreadsheet,
+  Move,
+  Minimize2,
+  Maximize2,
+  Bold,
+  Italic,
+  Underline,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Palette,
+  Layers,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -304,24 +315,12 @@ export default function App() {
     );
   }, []);
 
-  // Authentication & Admin Edit Mode state:
-  // In Google AI Studio: Admin editing is always authorized.
-  // In Public Production: Requires administrative password or authorized Google login.
+  // Authentication & Strict Admin Edit Mode state:
+  // Editing is STRICTLY disabled everywhere until the user logs in via Admin Login (Password or verified Admin Google account).
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    const h = window.location.hostname;
-    if (
-      h.includes('ais-') ||
-      h.includes('run.app') ||
-      h.includes('localhost') ||
-      h === '127.0.0.1' ||
-      window.location.protocol === 'file:'
-    ) {
-      return true;
-    }
-    // Clean up any legacy localStorage persistent authentication so password is required every session
     try {
       window.localStorage.removeItem('asar_admin_authenticated');
     } catch {
@@ -333,7 +332,32 @@ export default function App() {
       return false;
     }
   });
-  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [rawAdminMode, setRawAdminMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.sessionStorage.getItem('asar_admin_authenticated') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  // Guaranteed lock: isAdminMode is NEVER true unless isAdminAuthenticated is true!
+  const isAdminMode = Boolean(isAdminAuthenticated && rawAdminMode);
+  const setIsAdminMode = (nextVal: boolean | ((prev: boolean) => boolean)) => {
+    if (!isAdminAuthenticated) {
+      setShowAdminLoginModal(true);
+      return;
+    }
+    setRawAdminMode((prev) => (typeof nextVal === 'function' ? nextVal(prev) : nextVal));
+  };
+
+  // Draggable Compact Admin Edit Tab Bar State
+  const [activeAdminEditTab, setActiveAdminEditTab] = useState<'text' | 'photo' | 'add' | 'brand' | 'backend'>('text');
+  const [isAdminBarMinimized, setIsAdminBarMinimized] = useState(false);
+  const [adminBarPos, setAdminBarPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingAdminBar, setIsDraggingAdminBar] = useState(false);
+  const [targetCustomBlockSection, setTargetCustomBlockSection] = useState<string>('home');
+  const adminBarRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ offsetX: number; offsetY: number }>({ offsetX: 0, offsetY: 0 });
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [adminInputPassword, setAdminInputPassword] = useState('');
@@ -681,7 +705,7 @@ export default function App() {
   const isVerifiedAdminUser = Boolean(
     currentUser && currentUser.emailVerified && currentUser.email === ADMIN_EMAIL
   );
-  const canWriteCloud = Boolean(isAdminAuthenticated || isAdminMode || isAiStudioEnv || isVerifiedAdminUser);
+  const canWriteCloud = Boolean(isAdminAuthenticated || isVerifiedAdminUser);
   const cloudAuthorId = isVerifiedAdminUser && currentUser ? currentUser.uid : 'admin_portal';
 
   // GitHub Auto-Commit State (Allows Admin Mode edits on website to auto-update GitHub repository & code)
@@ -815,8 +839,12 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     }, 4500);
   };
 
-  // Open the Universal Photo Editor for ANY image on the website
+  // Open the Universal Photo Editor for ANY image on the website (Strictly requires Admin Login)
   const openPhotoEditor = (label: string, currentUrl: string, onApply: (newUrl: string) => void) => {
+    if (!isAdminAuthenticated || !isAdminMode) {
+      setShowAdminLoginModal(true);
+      return;
+    }
     setPhotoEditorTarget({ label, currentUrl, onApply });
     setPhotoDraftUrl(currentUrl);
   };
@@ -915,12 +943,62 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     };
   }, [isAdminAuthenticated, isAdminMode]);
 
+  // Mouse & Touch Drag Listeners for the Compact Floating Admin Edit Tab Bar
+  useEffect(() => {
+    if (!isDraggingAdminBar) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const barWidth = adminBarRef.current?.offsetWidth || 380;
+      const barHeight = adminBarRef.current?.offsetHeight || 120;
+      const nextX = Math.max(8, Math.min(window.innerWidth - Math.min(barWidth, 240), e.clientX - dragOffsetRef.current.offsetX));
+      const nextY = Math.max(8, Math.min(window.innerHeight - Math.min(barHeight, 64), e.clientY - dragOffsetRef.current.offsetY));
+      setAdminBarPos({ x: nextX, y: nextY });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!e.touches[0]) return;
+      const t = e.touches[0];
+      const barWidth = adminBarRef.current?.offsetWidth || 380;
+      const barHeight = adminBarRef.current?.offsetHeight || 120;
+      const nextX = Math.max(8, Math.min(window.innerWidth - Math.min(barWidth, 240), t.clientX - dragOffsetRef.current.offsetX));
+      const nextY = Math.max(8, Math.min(window.innerHeight - Math.min(barHeight, 64), t.clientY - dragOffsetRef.current.offsetY));
+      setAdminBarPos({ x: nextX, y: nextY });
+    };
+
+    const handleStopDrag = () => {
+      setIsDraggingAdminBar(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleStopDrag);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleStopDrag);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleStopDrag);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleStopDrag);
+    };
+  }, [isDraggingAdminBar]);
+
+  const startAdminBarDrag = (clientX: number, clientY: number) => {
+    if (!adminBarRef.current) return;
+    const rect = adminBarRef.current.getBoundingClientRect();
+    dragOffsetRef.current = {
+      offsetX: clientX - rect.left,
+      offsetY: clientY - rect.top,
+    };
+    setAdminBarPos({ x: rect.left, y: rect.top });
+    setIsDraggingAdminBar(true);
+  };
+
   const handleUnlockAdminWithPassword = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const currentExpected = siteConfig.adminPassword || 'alsahab2026';
     if (adminInputPassword.trim() === currentExpected.trim()) {
       setIsAdminAuthenticated(true);
-      setIsAdminMode(true);
+      setRawAdminMode(true);
       setAdminAuthError(null);
       setAdminInputPassword('');
       setShowAdminLoginModal(false);
@@ -930,14 +1008,14 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
       } catch {
         // ignore
       }
-      showNotification('success', 'Admin Mode Unlocked for this session! Welcome back.');
+      showNotification('success', 'Admin Mode Unlocked! Use the movable Admin Studio bar to edit anything.');
     } else {
       setAdminAuthError('Invalid Admin Password. Please try again or sign in with Google.');
     }
   };
 
   const handleAdminLogout = () => {
-    setIsAdminMode(false);
+    setRawAdminMode(false);
     setIsAdminAuthenticated(false);
     setSelectedElementId(null);
     try {
@@ -946,7 +1024,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     } catch {
       // ignore
     }
-    showNotification('info', 'Admin mode locked and logged out.');
+    showNotification('info', 'Admin Mode locked & logged out. Editing is now disabled.');
   };
 
   const handleChangeAdminPassword = async (e?: React.FormEvent) => {
@@ -1155,9 +1233,52 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     return () => window.clearInterval(timer);
   }, [isAutoPlay, isAdminMode, galleryPhotos.length]);
 
+  // Parse & Build compact font style specification (stored inside fontSize up to 30 chars for Firestore compatibility)
+  const parseFontStyleSpec = (rawSpec?: string) => {
+    const tokens = (rawSpec || '').split('|').filter(Boolean);
+    let size = '';
+    let bold = false;
+    let italic = false;
+    let underline = false;
+    let uppercase = false;
+    let align: '' | 'left' | 'center' | 'right' = '';
+    for (const t of tokens) {
+      if (t.endsWith('px') || t.endsWith('rem') || t.endsWith('em')) size = t;
+      else if (t === 'B') bold = true;
+      else if (t === 'I') italic = true;
+      else if (t === 'U') underline = true;
+      else if (t === 'UC') uppercase = true;
+      else if (t === 'left' || t === 'center' || t === 'right') align = t;
+    }
+    return { size, bold, italic, underline, uppercase, align };
+  };
+
+  const buildFontStyleSpec = (spec: {
+    size?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    uppercase?: boolean;
+    align?: '' | 'left' | 'center' | 'right';
+  }) => {
+    const parts: string[] = [];
+    if (spec.size) parts.push(spec.size);
+    if (spec.bold) parts.push('B');
+    if (spec.italic) parts.push('I');
+    if (spec.underline) parts.push('U');
+    if (spec.uppercase) parts.push('UC');
+    if (spec.align) parts.push(spec.align);
+    return parts.join('|').slice(0, 30);
+  };
+
   // Save a single inline Text/Heading/Block Override to LocalStorage + Cloud Firestore + GitHub
   const saveTextOverride = async (override: TextOverrideItem) => {
     const cleanId = override.elementId.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const isBackendSetting = cleanId === 'inquiry-target-email' || cleanId === 'inquiry-sheet-webhook';
+    if (!isAdminAuthenticated && !isBackendSetting) {
+      setShowAdminLoginModal(true);
+      return;
+    }
     const updatedItem: TextOverrideItem = {
       ...override,
       elementId: cleanId,
@@ -1189,7 +1310,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     }
   };
 
-  // Universal helper to render ANY heading, text, label, or block as inline-editable in Admin Mode
+  // Universal helper to render ANY heading, text, label, or block as inline-editable ONLY when Admin Login & Admin Mode are active
   const renderEditableElement = (
     elementId: string,
     defaultText: string,
@@ -1205,12 +1326,24 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
 
     const currentText = ov !== undefined ? ov.textValue : defaultText;
     const isSelected = isAdminMode && selectedElementId === cleanId;
+    const parsedFont = parseFontStyleSpec(ov?.fontSize);
 
     const mergedStyle: React.CSSProperties = {
       ...baseStyle,
       ...(ov?.textColor ? { color: ov.textColor } : {}),
       ...(ov?.bgColor ? { backgroundColor: ov.bgColor, padding: '2px 6px', borderRadius: '6px' } : {}),
-      ...(ov?.fontSize ? { fontSize: ov.fontSize } : {}),
+      ...(parsedFont.size ? { fontSize: parsedFont.size } : {}),
+      ...(parsedFont.bold ? { fontWeight: 800 } : {}),
+      ...(parsedFont.italic ? { fontStyle: 'italic' } : {}),
+      ...(parsedFont.underline ? { textDecoration: 'underline' } : {}),
+      ...(parsedFont.uppercase ? { textTransform: 'uppercase' } : {}),
+      ...(parsedFont.align
+        ? {
+            textAlign: parsedFont.align,
+            display: Tag === 'span' ? 'inline-block' : undefined,
+            width: Tag === 'span' ? '100%' : undefined,
+          }
+        : {}),
       ...(ov?.hidden && isAdminMode ? { opacity: 0.4, textDecoration: 'line-through' } : {}),
     };
 
@@ -1228,13 +1361,15 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
         contentEditable={isAdminMode}
         suppressContentEditableWarning
         onClick={(e) => {
-          if (!isAdminMode) return;
+          if (!isAdminMode || !isAdminAuthenticated) return;
           e.stopPropagation();
           setSelectedElementId(cleanId);
           setSelectedElementDefaultText(defaultText);
+          setActiveAdminEditTab('text');
+          setIsAdminBarMinimized(false);
         }}
         onBlur={(e) => {
-          if (!isAdminMode) return;
+          if (!isAdminMode || !isAdminAuthenticated) return;
           const newText = e.currentTarget.innerText;
           if (newText !== currentText) {
             saveTextOverride({
@@ -1249,7 +1384,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
             showNotification('success', `Updated text: "${newText.slice(0, 36)}..."`, cleanId);
           }
         }}
-        title={isAdminMode ? 'Click to edit text directly or customize style in bottom bar' : undefined}
+        title={isAdminMode ? 'Click to edit text directly or style in Admin Studio bar' : undefined}
         className={`${className} ${adminClasses}`}
         style={mergedStyle}
       >
@@ -1258,8 +1393,12 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     );
   };
 
-  // Add, update, or delete a Custom Block inside any section
+  // Add, update, or delete a Custom Block inside any section (Strictly requires Admin Login)
   const handleAddCustomBlock = async (sectionId: string, withPhoto = false) => {
+    if (!isAdminAuthenticated || !isAdminMode) {
+      setShowAdminLoginModal(true);
+      return;
+    }
     const newId = `blk-${Date.now()}`;
     const newBlock: CustomBlockItem = {
       id: newId,
@@ -2594,33 +2733,7 @@ function doPost(e) {
                 </button>
               </>
             )}
-            {isAiStudioEnv ? (
-              <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-300 rounded-lg p-0.5">
-                <span className="hidden xl:inline-block px-2 text-[10px] font-bold text-amber-900 uppercase tracking-wider">
-                  AI Studio
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextState = !isAdminMode;
-                    setIsAdminMode(nextState);
-                    if (!nextState) setSelectedElementId(null);
-                    showNotification(
-                      'info',
-                      nextState
-                        ? 'AI Studio: Admin Edit Mode ON! Click ANY heading, text, block, or photo to edit.'
-                        : 'AI Studio: Admin Edit Mode paused.'
-                    );
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer text-white shadow-2xs"
-                  style={{ backgroundColor: isAdminMode ? siteConfig.accentOrange : siteConfig.primaryNavy }}
-                  title="Google AI Studio Direct Edit Toggle"
-                >
-                  {isAdminMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                  <span>{isAdminMode ? 'Admin Mode: ON' : 'Admin Mode'}</span>
-                </button>
-              </div>
-            ) : isAdminAuthenticated ? (
+            {isAdminAuthenticated ? (
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -2631,7 +2744,7 @@ function doPost(e) {
                     showNotification(
                       'info',
                       nextState
-                        ? 'Admin Edit Mode ON! Click any element or photo to edit.'
+                        ? 'Admin Edit Studio ON! Drag the studio bar anywhere or click any element to edit.'
                         : 'Admin Edit Mode paused.'
                     );
                   }}
@@ -2659,7 +2772,7 @@ function doPost(e) {
                   setShowAdminLoginModal(true);
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-[#1e3a8a] border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                title="Admin Portal Login (Password Protected)"
+                title="Admin Portal Login (Password Required to Unlock Editing)"
               >
                 <Lock className="w-3.5 h-3.5 text-slate-500" />
                 <span className="hidden sm:inline">Admin Login</span>
@@ -2741,241 +2854,7 @@ function doPost(e) {
         </div>
       </div>
 
-      {/* ADMIN EDIT MODE COMMAND BAR (Visible when Admin Mode is toggled ON) */}
-      {isAdminMode && (
-        <section className="bg-orange-50/95 border-b border-orange-200 px-6 py-4 sticky top-[57px] z-30 backdrop-blur-md shadow-xs">
-          <div className="max-w-[1360px] mx-auto flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-900">
-                <Sliders className="w-4 h-4 text-[#f97316]" />
-                <span>Universal Edit Mode Active — Click ANY Heading, Text, Block, or Photo to Edit!</span>
-                {confirmedBadgeId === 'global-sync' && (
-                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                    ✓ All Changes Confirmed
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-600">
-                Click directly on any heading or text (outlined in dashed orange) to type or restyle it, or click any photo to upload a file / paste a URL.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {/* Theme & Typography Customizer */}
-              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-300 text-xs">
-                <label className="font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer">
-                  <span>Navy</span>
-                  <input
-                    type="color"
-                    value={siteConfig.primaryNavy}
-                    onChange={(e) => setSiteConfig({ ...siteConfig, primaryNavy: e.target.value })}
-                    className="w-5 h-5 rounded cursor-pointer border-0"
-                  />
-                </label>
-                <span className="text-slate-300">|</span>
-                <label className="font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer">
-                  <span>Gold/Orange</span>
-                  <input
-                    type="color"
-                    value={siteConfig.accentOrange}
-                    onChange={(e) => setSiteConfig({ ...siteConfig, accentOrange: e.target.value })}
-                    className="w-5 h-5 rounded cursor-pointer border-0"
-                  />
-                </label>
-                <span className="text-slate-300">|</span>
-                <select
-                  value={siteConfig.headingScale}
-                  onChange={(e) =>
-                    setSiteConfig({
-                      ...siteConfig,
-                      headingScale: e.target.value as SiteConfigData['headingScale'],
-                    })
-                  }
-                  className="bg-transparent font-semibold text-slate-700 focus:outline-none cursor-pointer"
-                >
-                  <option value="compact">Compact Headings</option>
-                  <option value="standard">Standard Headings</option>
-                  <option value="large">Large Headings</option>
-                </select>
-              </div>
-
-              {hiddenElementsCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTextOverrides((prev) => {
-                      const next = { ...prev };
-                      Object.keys(next).forEach((k) => {
-                        next[k] = { ...next[k], hidden: false };
-                      });
-                      return next;
-                    });
-                    showNotification('info', 'Restored all hidden text/heading elements.');
-                  }}
-                  className="px-3 py-2 text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 rounded-lg cursor-pointer"
-                >
-                  Restore {hiddenElementsCount} Hidden Element(s)
-                </button>
-              )}
-
-              {!currentUser ? (
-                <button
-                  type="button"
-                  onClick={() => signInAdminWithGoogle()}
-                  className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5 text-[#1e3a8a]" />
-                  <span>Google Cloud Sign-In</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => signOutAdmin()}
-                  className="px-3 py-2 text-xs font-medium bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out ({currentUser.email?.split('@')[0]})</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={syncAllCollectionsToCloud}
-                className="px-3.5 py-2 text-xs font-semibold text-white rounded-lg hover:opacity-95 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                style={{ backgroundColor: siteConfig.primaryNavy }}
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Save & Confirm All</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetToDefaults}
-                className="px-3 py-2 text-xs font-semibold bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                title="Reset all edited content back to default wwwasar.com data"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                <span>Reset Defaults</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openPhotoEditor(
-                    'Official Company Logo (Header, Hero & Footer)',
-                    siteConfig.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
-                    (newLogoUrl) => {
-                      saveSiteConfigToCloud({ ...siteConfig, companyLogoUrl: newLogoUrl }, 'logo-save');
-                    }
-                  )
-                }
-                className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-orange-300 rounded-lg hover:bg-orange-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Camera className="w-3.5 h-3.5 text-[#f97316]" />
-                <span>Change Company Logo</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowBackendConfigModal(true)}
-                className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Database className="w-3.5 h-3.5 text-[#f97316]" />
-                <span>Backend & Inquiries ({allInquiries.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setNewAdminPassword('');
-                  setShowPasswordChangeModal(true);
-                }}
-                className="px-3 py-2 text-xs font-semibold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                title="View or Change Admin Master Password"
-              >
-                <Key className="w-3.5 h-3.5 text-[#f97316]" />
-                <span>Admin Password</span>
-              </button>
-
-              {!isAiStudioEnv ? (
-                <button
-                  type="button"
-                  onClick={handleAdminLogout}
-                  className="px-3 py-2 text-xs font-semibold bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                  title="Lock and Log Out of Admin Mode"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Lock & Exit</span>
-                </button>
-              ) : (
-                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-md">
-                  AI Studio (Unlocked)
-                </span>
-              )}
-
-              <button
-                type="button"
-                onClick={() =>
-                  exportStandaloneHtmlFile(
-                    siteConfig,
-                    coreServices,
-                    runningProjects,
-                    galleryPhotos,
-                    completedProjects,
-                    coreValues,
-                    supabaseUrl,
-                    supabaseKey
-                  )
-                }
-                className="px-3.5 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-[#f97316]" />
-                <span>Export Single-File HTML</span>
-              </button>
-
-              {isAiStudioEnv && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveDeployTab('netlify');
-                      setShowBluehostModal(true);
-                    }}
-                    className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-                  >
-                    <Cloud className="w-3.5 h-3.5 text-emerald-100" />
-                    <span>Netlify Publish</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveDeployTab('domain');
-                      setShowBluehostModal(true);
-                    }}
-                    className="px-3.5 py-2 text-xs font-semibold bg-[#1e3a8a] text-white rounded-lg hover:bg-blue-900 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-                  >
-                    <Globe className="w-3.5 h-3.5 text-blue-200" />
-                    <span>Connect Domain & Host</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveDeployTab('bluehost');
-                      setShowBluehostModal(true);
-                    }}
-                    className="px-3.5 py-2 text-xs font-semibold bg-slate-700 text-white rounded-lg hover:bg-slate-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
-                  >
-                    <Server className="w-3.5 h-3.5 text-slate-300" />
-                    <span>Bluehost cPanel</span>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Old bulky command bar removed in favor of the Compact Draggable Floating Admin Edit Studio */}
 
       {/* MAIN CONTENT CONTAINER */}
       <main className="flex-1">
@@ -6244,167 +6123,777 @@ function doPost(e) {
         </div>
       </footer>
 
-      {/* FLOATING ELEMENT & STYLE INSPECTOR BAR (Appears when any heading/text/block is clicked in Admin Mode) */}
-      {isAdminMode && selectedElementId && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-4xl bg-white border-2 border-[#f97316] rounded-2xl shadow-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#1e3a8a]">
-              <Type className="w-4 h-4 text-[#f97316]" />
-              <span>Editing Selected Element:</span>
-              <span className="font-mono-tabular px-2 py-0.5 bg-orange-50 text-[#f97316] rounded">
-                {selectedElementId}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelectedElementId(null)}
-              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+      {/* COMPACT, USER-FRIENDLY, FREELY DRAGGABLE MULTI-TAB ADMIN EDIT STUDIO BAR */}
+      {isAdminAuthenticated && isAdminMode && (() => {
+        const currentFontSpec = parseFontStyleSpec(selectedOverride?.fontSize);
+        const updateSelectedStyle = (partialSpec: Partial<ReturnType<typeof parseFontStyleSpec>>, extra?: Partial<TextOverrideItem>) => {
+          if (!selectedElementId) return;
+          const nextSpec = buildFontStyleSpec({
+            ...currentFontSpec,
+            ...partialSpec,
+          });
+          void saveTextOverride({
+            elementId: selectedElementId,
+            textValue: selectedOverride !== undefined ? selectedOverride.textValue : selectedElementDefaultText,
+            textColor: extra?.textColor !== undefined ? extra.textColor : selectedOverride?.textColor || '',
+            fontSize: nextSpec,
+            bgColor: extra?.bgColor !== undefined ? extra.bgColor : selectedOverride?.bgColor || '',
+            hidden: extra?.hidden !== undefined ? extra.hidden : Boolean(selectedOverride?.hidden),
+            authorId: currentUser?.uid || 'local_admin',
+          });
+        };
+
+        const stepSelectedFontSize = (deltaPx: number) => {
+          if (!selectedElementId) return;
+          const numericCurrent = parseInt(currentFontSpec.size || '16', 10) || 16;
+          const nextNumeric = Math.max(10, Math.min(64, numericCurrent + deltaPx));
+          updateSelectedStyle({ size: `${nextNumeric}px` });
+        };
+
+        return (
+          <div
+            ref={adminBarRef}
+            style={
+              adminBarPos
+                ? { left: `${adminBarPos.x}px`, top: `${adminBarPos.y}px` }
+                : { right: '16px', bottom: '16px' }
+            }
+            className={`fixed z-50 bg-white/98 backdrop-blur-md border-2 border-[#f97316] rounded-2xl shadow-2xl transition-shadow select-none ${
+              isAdminBarMinimized ? 'w-auto max-w-xs' : 'w-[350px] sm:w-[410px]'
+            }`}
+          >
+            {/* DRAGGABLE TOP HANDLE BAR (Drag Anywhere on Screen) */}
+            <div
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return;
+                startAdminBarDrag(e.clientX, e.clientY);
+              }}
+              onTouchStart={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return;
+                if (e.touches[0]) {
+                  startAdminBarDrag(e.touches[0].clientX, e.touches[0].clientY);
+                }
+              }}
+              className="flex items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-[#1e3a8a] to-[#0f172a] text-white rounded-t-xl cursor-move"
+              title="Drag this bar to move the Admin Edit Studio anywhere on screen"
             >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Move className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                <span className="text-xs font-bold tracking-tight truncate">Admin Edit Studio</span>
+                {selectedElementId && !isAdminBarMinimized && (
+                  <span className="text-[10px] font-mono-tabular bg-orange-500/25 text-orange-200 px-1.5 py-0.5 rounded truncate max-w-[110px]">
+                    {selectedElementId}
+                  </span>
+                )}
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            <div className="md:col-span-6">
-              <input
-                type="text"
-                value={
-                  selectedOverride !== undefined
-                    ? selectedOverride.textValue
-                    : selectedElementDefaultText
-                }
-                onChange={(e) => {
-                  const val = e.target.value;
-                  saveTextOverride({
-                    elementId: selectedElementId,
-                    textValue: val,
-                    textColor: selectedOverride?.textColor || '',
-                    fontSize: selectedOverride?.fontSize || '',
-                    bgColor: selectedOverride?.bgColor || '',
-                    hidden: Boolean(selectedOverride?.hidden),
-                    authorId: currentUser?.uid || 'local_admin',
-                  });
-                }}
-                placeholder="Edit heading or text content..."
-                className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:border-[#1e3a8a] focus:outline-none"
-              />
-            </div>
-
-            <div className="md:col-span-6 flex flex-wrap items-center gap-2.5 text-xs">
-              <label className="flex items-center gap-1 font-semibold text-slate-700">
-                <span>Size:</span>
-                <select
-                  value={selectedOverride?.fontSize || ''}
-                  onChange={(e) =>
-                    saveTextOverride({
-                      elementId: selectedElementId,
-                      textValue:
-                        selectedOverride !== undefined
-                          ? selectedOverride.textValue
-                          : selectedElementDefaultText,
-                      textColor: selectedOverride?.textColor || '',
-                      fontSize: e.target.value,
-                      bgColor: selectedOverride?.bgColor || '',
-                      hidden: Boolean(selectedOverride?.hidden),
-                      authorId: currentUser?.uid || 'local_admin',
-                    })
-                  }
-                  className="px-2 py-1 bg-slate-50 border border-slate-300 rounded"
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={syncAllCollectionsToCloud}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-[#f97316] hover:bg-orange-600 text-white rounded flex items-center gap-1 cursor-pointer"
+                  title="Save & Confirm All Website Edits to Cloud"
                 >
-                  <option value="">Default</option>
-                  <option value="12px">XS (12px)</option>
-                  <option value="14px">SM (14px)</option>
-                  <option value="16px">Base (16px)</option>
-                  <option value="20px">LG (20px)</option>
-                  <option value="24px">XL (24px)</option>
-                  <option value="32px">2XL (32px)</option>
-                  <option value="42px">3XL (42px)</option>
-                </select>
-              </label>
-
-              <label className="flex items-center gap-1 font-semibold text-slate-700">
-                <span>Text Color:</span>
-                <input
-                  type="color"
-                  value={selectedOverride?.textColor || siteConfig.primaryNavy}
-                  onChange={(e) =>
-                    saveTextOverride({
-                      elementId: selectedElementId,
-                      textValue:
-                        selectedOverride !== undefined
-                          ? selectedOverride.textValue
-                          : selectedElementDefaultText,
-                      textColor: e.target.value,
-                      fontSize: selectedOverride?.fontSize || '',
-                      bgColor: selectedOverride?.bgColor || '',
-                      hidden: Boolean(selectedOverride?.hidden),
-                      authorId: currentUser?.uid || 'local_admin',
-                    })
-                  }
-                  className="w-6 h-6 rounded cursor-pointer border-0"
-                />
-              </label>
-
-              <label className="flex items-center gap-1 font-semibold text-slate-700">
-                <span>Highlight:</span>
-                <input
-                  type="color"
-                  value={selectedOverride?.bgColor || '#ffffff'}
-                  onChange={(e) =>
-                    saveTextOverride({
-                      elementId: selectedElementId,
-                      textValue:
-                        selectedOverride !== undefined
-                          ? selectedOverride.textValue
-                          : selectedElementDefaultText,
-                      textColor: selectedOverride?.textColor || '',
-                      fontSize: selectedOverride?.fontSize || '',
-                      bgColor: e.target.value,
-                      hidden: Boolean(selectedOverride?.hidden),
-                      authorId: currentUser?.uid || 'local_admin',
-                    })
-                  }
-                  className="w-6 h-6 rounded cursor-pointer border-0"
-                />
-              </label>
-
-              <button
-                type="button"
-                onClick={() =>
-                  saveTextOverride({
-                    elementId: selectedElementId,
-                    textValue:
-                      selectedOverride !== undefined
-                        ? selectedOverride.textValue
-                        : selectedElementDefaultText,
-                    textColor: selectedOverride?.textColor || '',
-                    fontSize: selectedOverride?.fontSize || '',
-                    bgColor: selectedOverride?.bgColor || '',
-                    hidden: !selectedOverride?.hidden,
-                    authorId: currentUser?.uid || 'local_admin',
-                  })
-                }
-                className="px-2.5 py-1 font-semibold text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 cursor-pointer"
-              >
-                {selectedOverride?.hidden ? 'Unhide' : 'Hide Element'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  showNotification('success', '✓ Confirmed & Saved text & style changes!', selectedElementId);
-                  setSelectedElementId(null);
-                }}
-                className="px-3.5 py-1.5 font-semibold text-white rounded-lg cursor-pointer ml-auto flex items-center gap-1"
-                style={{ backgroundColor: siteConfig.primaryNavy }}
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Confirm & Save Text</span>
-              </button>
+                  <Check className="w-3 h-3" />
+                  <span>Save</span>
+                </button>
+                {adminBarPos && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminBarPos(null)}
+                    className="px-1.5 py-0.5 text-[10px] font-semibold bg-white/15 hover:bg-white/25 text-white rounded cursor-pointer"
+                    title="Reset position to bottom-right corner"
+                  >
+                    Dock
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsAdminBarMinimized((prev) => !prev)}
+                  className="p-1 text-slate-200 hover:text-white hover:bg-white/15 rounded cursor-pointer"
+                  title={isAdminBarMinimized ? 'Expand Admin Edit Studio' : 'Minimize to compact bar'}
+                >
+                  {isAdminBarMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  className="p-1 text-red-300 hover:text-white hover:bg-red-600/80 rounded cursor-pointer"
+                  title="Lock & Exit Admin Mode"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
+
+            {/* EXPANDED BODY: 5 COMPACT TABS WITH ALL EDITING TOOLS */}
+            {!isAdminBarMinimized && (
+              <div className="p-3 space-y-2.5 text-xs">
+                {/* 5-Tab Switcher */}
+                <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                  {(
+                    [
+                      { id: 'text', label: 'Text', icon: Type },
+                      { id: 'photo', label: 'Photos', icon: Camera },
+                      { id: 'add', label: '+ Add', icon: Plus },
+                      { id: 'brand', label: 'Brand', icon: Palette },
+                      { id: 'backend', label: 'Data', icon: Database },
+                    ] as const
+                  ).map((t) => {
+                    const IconComp = t.icon;
+                    const active = activeAdminEditTab === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setActiveAdminEditTab(t.id)}
+                        className={`py-1.5 px-1 rounded-md font-bold text-[11px] flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          active
+                            ? 'bg-[#1e3a8a] text-white shadow-2xs'
+                            : 'text-slate-600 hover:bg-white hover:text-[#1e3a8a]'
+                        }`}
+                      >
+                        <IconComp className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* TAB 1: TEXT & TYPOGRAPHY STYLING */}
+                {activeAdminEditTab === 'text' && (
+                  <div className="space-y-2.5">
+                    {selectedElementId ? (
+                      <>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold text-slate-700 truncate">
+                            Element: <span className="text-[#f97316] font-mono-tabular">{selectedElementId}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedElementId(null)}
+                            className="text-[10px] font-semibold text-slate-400 hover:text-slate-700 cursor-pointer"
+                          >
+                            Deselect ✕
+                          </button>
+                        </div>
+
+                        <textarea
+                          rows={2}
+                          value={
+                            selectedOverride !== undefined
+                              ? selectedOverride.textValue
+                              : selectedElementDefaultText
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            void saveTextOverride({
+                              elementId: selectedElementId,
+                              textValue: val,
+                              textColor: selectedOverride?.textColor || '',
+                              fontSize: selectedOverride?.fontSize || '',
+                              bgColor: selectedOverride?.bgColor || '',
+                              hidden: Boolean(selectedOverride?.hidden),
+                              authorId: currentUser?.uid || 'local_admin',
+                            });
+                          }}
+                          placeholder="Type text content..."
+                          className="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:border-[#1e3a8a] focus:outline-none resize-y"
+                        />
+
+                        {/* Row 1: Font Size + Step Buttons + Style Toggles (B, I, U, AA, Align) */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => stepSelectedFontSize(-2)}
+                              className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold hover:bg-slate-100 cursor-pointer"
+                              title="Decrease Font Size"
+                            >
+                              A-
+                            </button>
+                            <select
+                              value={currentFontSpec.size}
+                              onChange={(e) => updateSelectedStyle({ size: e.target.value })}
+                              className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-semibold cursor-pointer"
+                            >
+                              <option value="">Size: Auto</option>
+                              <option value="11px">11px</option>
+                              <option value="12px">12px</option>
+                              <option value="14px">14px</option>
+                              <option value="16px">16px</option>
+                              <option value="18px">18px</option>
+                              <option value="20px">20px</option>
+                              <option value="24px">24px</option>
+                              <option value="28px">28px</option>
+                              <option value="32px">32px</option>
+                              <option value="40px">40px</option>
+                              <option value="48px">48px</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => stepSelectedFontSize(2)}
+                              className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold hover:bg-slate-100 cursor-pointer"
+                              title="Increase Font Size"
+                            >
+                              A+
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateSelectedStyle({ bold: !currentFontSpec.bold })}
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.bold
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Bold"
+                            >
+                              <Bold className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSelectedStyle({ italic: !currentFontSpec.italic })}
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.italic
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Italic"
+                            >
+                              <Italic className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSelectedStyle({ underline: !currentFontSpec.underline })}
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.underline
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Underline"
+                            >
+                              <Underline className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSelectedStyle({ uppercase: !currentFontSpec.uppercase })}
+                              className={`px-1.5 py-0.5 rounded border text-[10px] font-bold cursor-pointer ${
+                                currentFontSpec.uppercase
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="UPPERCASE"
+                            >
+                              AA
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateSelectedStyle({
+                                  align: currentFontSpec.align === 'left' ? '' : 'left',
+                                })
+                              }
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.align === 'left'
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Align Left"
+                            >
+                              <AlignLeft className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateSelectedStyle({
+                                  align: currentFontSpec.align === 'center' ? '' : 'center',
+                                })
+                              }
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.align === 'center'
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Align Center"
+                            >
+                              <AlignCenter className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateSelectedStyle({
+                                  align: currentFontSpec.align === 'right' ? '' : 'right',
+                                })
+                              }
+                              className={`p-1 rounded border cursor-pointer ${
+                                currentFontSpec.align === 'right'
+                                  ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                                  : 'bg-white text-slate-700 border-slate-300'
+                              }`}
+                              title="Align Right"
+                            >
+                              <AlignRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Row 2: Text Color & Background Highlight Swatches */}
+                        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                              <span>Text Color</span>
+                              <button
+                                type="button"
+                                onClick={() => updateSelectedStyle({}, { textColor: '' })}
+                                className="text-[#1e3a8a] hover:underline cursor-pointer"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="color"
+                                value={selectedOverride?.textColor || siteConfig.primaryNavy}
+                                onChange={(e) => updateSelectedStyle({}, { textColor: e.target.value })}
+                                className="w-5 h-5 rounded cursor-pointer border-0 shrink-0"
+                              />
+                              {['#1e3a8a', '#f97316', '#0f172a', '#059669', '#dc2626', '#ffffff'].map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => updateSelectedStyle({}, { textColor: c })}
+                                  style={{ backgroundColor: c }}
+                                  className="w-4 h-4 rounded-full border border-slate-300 cursor-pointer shrink-0"
+                                  title={`Text color ${c}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                              <span>Highlight BG</span>
+                              <button
+                                type="button"
+                                onClick={() => updateSelectedStyle({}, { bgColor: '' })}
+                                className="text-[#1e3a8a] hover:underline cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="color"
+                                value={selectedOverride?.bgColor || '#fff7ed'}
+                                onChange={(e) => updateSelectedStyle({}, { bgColor: e.target.value })}
+                                className="w-5 h-5 rounded cursor-pointer border-0 shrink-0"
+                              />
+                              {['#fff7ed', '#eff6ff', '#ecfdf5', '#fef2f2', '#fefce8', '#0f172a'].map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => updateSelectedStyle({}, { bgColor: c })}
+                                  style={{ backgroundColor: c }}
+                                  className="w-4 h-4 rounded-full border border-slate-300 cursor-pointer shrink-0"
+                                  title={`Highlight ${c}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Row 3: Hide, Reset Element, Confirm */}
+                        <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => updateSelectedStyle({}, { hidden: !selectedOverride?.hidden })}
+                            className="px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 flex items-center gap-1 cursor-pointer"
+                          >
+                            {selectedOverride?.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{selectedOverride?.hidden ? 'Unhide' : 'Hide'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void saveTextOverride({
+                                elementId: selectedElementId,
+                                textValue: selectedElementDefaultText,
+                                textColor: '',
+                                fontSize: '',
+                                bgColor: '',
+                                hidden: false,
+                                authorId: currentUser?.uid || 'local_admin',
+                              });
+                              showNotification('info', 'Reset element to original default text & style.');
+                            }}
+                            className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded-md hover:bg-slate-200 flex items-center gap-1 cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Reset Element</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              showNotification('success', '✓ Text & style saved!', selectedElementId);
+                              setSelectedElementId(null);
+                            }}
+                            className="px-3 py-1 text-[11px] font-bold text-white bg-[#1e3a8a] hover:bg-blue-900 rounded-md flex items-center gap-1 cursor-pointer ml-auto"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Done</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl space-y-2 text-slate-700">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <Edit3 className="w-3.5 h-3.5 text-[#f97316]" />
+                          <span>Click Any Text or Heading on Page to Edit</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-slate-600">
+                          Click any dashed-outlined heading, paragraph, or button label on the website to type directly or change its font size, bold/italic, alignment, text color, or highlight.
+                        </p>
+                        {hiddenElementsCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextOverrides((prev) => {
+                                const next = { ...prev };
+                                Object.keys(next).forEach((k) => {
+                                  next[k] = { ...next[k], hidden: false };
+                                });
+                                return next;
+                              });
+                              showNotification('info', 'Restored all hidden elements.');
+                            }}
+                            className="w-full py-1.5 px-2.5 text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-lg cursor-pointer"
+                          >
+                            Restore {hiddenElementsCount} Hidden Element(s)
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: PHOTOS & LOGO */}
+                {activeAdminEditTab === 'photo' && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      💡 <strong>Tip:</strong> Click directly on <strong>any photo</strong> on the website to replace it, or use the quick shortcuts below:
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openPhotoEditor(
+                            'Official Company Logo (Header, Hero & Footer)',
+                            siteConfig.companyLogoUrl || DEFAULT_COMPANY_LOGO_URI,
+                            (newLogoUrl) => {
+                              saveSiteConfigToCloud({ ...siteConfig, companyLogoUrl: newLogoUrl }, 'logo-save');
+                            }
+                          )
+                        }
+                        className="p-2 text-[11px] font-bold bg-orange-50 text-slate-900 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span>Change Logo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection('gallery');
+                          setShowAddGalleryForm(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-blue-50 text-[#1e3a8a] border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#1e3a8a] shrink-0" />
+                        <span>+ Gallery Photo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomBlock(activeTabId === 'developer' ? 'home' : activeTabId, true)}
+                        className="p-2 text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-200 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span>+ Photo Card Here</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleForceSyncOfficialPhotos}
+                        className="p-2 text-[11px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                        <span>Sync 29 Photos</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: ADD ITEMS & SECTION JUMP */}
+                {activeAdminEditTab === 'add' && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <Layers className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                      <span className="text-[11px] font-bold text-slate-700 shrink-0">Section:</span>
+                      <select
+                        value={targetCustomBlockSection}
+                        onChange={(e) => setTargetCustomBlockSection(e.target.value)}
+                        className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[11px] font-semibold cursor-pointer"
+                      >
+                        <option value="home">Hero & Map (Top)</option>
+                        <option value="services">Core Services</option>
+                        <option value="running-projects">Running Projects</option>
+                        <option value="manpower">Manpower Supply</option>
+                        <option value="gallery">Photo Gallery</option>
+                        <option value="portfolio">Completed Portfolio</option>
+                        <option value="about">About, Aim & Vision</option>
+                        <option value="contact">Contact & Inquiry</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection(targetCustomBlockSection);
+                          void handleAddCustomBlock(targetCustomBlockSection, false);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#1e3a8a] shrink-0" />
+                        <span>+ Text Block</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection(targetCustomBlockSection);
+                          void handleAddCustomBlock(targetCustomBlockSection, true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-orange-50 text-slate-900 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span>+ Photo Block</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection('services');
+                          setShowAddServiceForm(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span>+ Core Service</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection('running-projects');
+                          setShowAddRunningForm(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#1e3a8a] shrink-0" />
+                        <span>+ Running Site</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection('portfolio');
+                          setShowAddCompletedForm(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>+ Completed Proj</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToSection('gallery');
+                          setShowAddGalleryForm(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span>+ Gallery Photo</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 4: BRAND, COMPANY INFO & THEME COLORS */}
+                {activeAdminEditTab === 'brand' && (
+                  <div className="space-y-2">
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-slate-600">
+                        Company Name
+                        <input
+                          type="text"
+                          value={siteConfig.companyName}
+                          onChange={(e) => setSiteConfig({ ...siteConfig, companyName: e.target.value })}
+                          className="mt-0.5 w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <label className="block text-[10px] font-bold text-slate-600">
+                          Office Phone
+                          <input
+                            type="text"
+                            value={siteConfig.officePhone}
+                            onChange={(e) => setSiteConfig({ ...siteConfig, officePhone: e.target.value })}
+                            className="mt-0.5 w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                          />
+                        </label>
+                        <label className="block text-[10px] font-bold text-slate-600">
+                          Official & Form Email
+                          <input
+                            type="email"
+                            value={siteConfig.officeEmail}
+                            onChange={(e) => setSiteConfig({ ...siteConfig, officeEmail: e.target.value })}
+                            className="mt-0.5 w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-slate-700 cursor-pointer">
+                        <span>Navy</span>
+                        <input
+                          type="color"
+                          value={siteConfig.primaryNavy}
+                          onChange={(e) => setSiteConfig({ ...siteConfig, primaryNavy: e.target.value })}
+                          className="w-5 h-5 rounded cursor-pointer border-0"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-slate-700 cursor-pointer">
+                        <span>Orange</span>
+                        <input
+                          type="color"
+                          value={siteConfig.accentOrange}
+                          onChange={(e) => setSiteConfig({ ...siteConfig, accentOrange: e.target.value })}
+                          className="w-5 h-5 rounded cursor-pointer border-0"
+                        />
+                      </label>
+                      <select
+                        value={siteConfig.headingScale}
+                        onChange={(e) =>
+                          setSiteConfig({
+                            ...siteConfig,
+                            headingScale: e.target.value as SiteConfigData['headingScale'],
+                          })
+                        }
+                        className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-semibold cursor-pointer"
+                      >
+                        <option value="compact">Compact</option>
+                        <option value="standard">Standard</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => saveSiteConfigToCloud(siteConfig, 'brand-tab-save')}
+                      className="w-full py-1.5 px-3 text-xs font-bold text-white bg-[#1e3a8a] hover:bg-blue-900 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save Brand & Theme to Cloud</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* TAB 5: BACKEND, INQUIRIES, EXCEL EXPORT & SECURITY */}
+                {activeAdminEditTab === 'backend' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={syncAllCollectionsToCloud}
+                        className="col-span-2 py-2 px-3 text-xs font-bold text-white bg-[#1e3a8a] hover:bg-blue-900 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-[#f97316]" />
+                        <span>Save & Confirm All Edits (Cloud + GitHub)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowBackendConfigModal(true)}
+                        className="p-2 text-[11px] font-bold bg-orange-50 text-slate-900 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Database className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span className="truncate">Inquiries ({allInquiries.length})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={downloadInquiriesAsExcelCsv}
+                        className="p-2 text-[11px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                        <span className="truncate">Excel (.csv)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={downloadUpdatedCodeFile}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Code2 className="w-3.5 h-3.5 text-[#1e3a8a] shrink-0" />
+                        <span className="truncate">Code (.ts)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewAdminPassword('');
+                          setShowPasswordChangeModal(true);
+                        }}
+                        className="p-2 text-[11px] font-bold bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Key className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                        <span className="truncate">Password</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResetToDefaults}
+                        className="p-2 text-[11px] font-semibold bg-white text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="truncate">Reset Default</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAdminLogout}
+                        className="p-2 text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <LogOut className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">Lock Admin</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 0: UNIVERSAL PHOTO REPLACER & UPLOADER MODAL */}
       {photoEditorTarget && (
