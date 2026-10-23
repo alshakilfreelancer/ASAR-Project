@@ -840,7 +840,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfigData = {
   officeCoordinates: '23.5880° N · 58.3829° E',
   officeMapLink: OFFICIAL_GOOGLE_MAPS_LINK,
   officePhone: '+968 9570 6749',
-  officeEmail: 'info@wwwasar.com',
+  officeEmail: 'saadsaid.asar@gmail.com',
   aboutBackground:
     'Al Sahab Al Rashid Trad. & Cont. Co L.L.C (wwwasar.com) is an established Omani Engineering, Procurement, and Construction (EPC) and technical manpower contracting enterprise headquartered in Muscat, Sultanate of Oman. Built on rigorous HSE governance, engineering precision, and rapid site mobilization, our company partners with ministries, petrochemical operators, port authorities, and tier-one infrastructure developers to execute complex civil, earthwork, mechanical, electrical, and pipeline packages on schedule and within specification.',
   ourAim:

@@ -36,6 +36,7 @@ import {
   Globe,
   Cloud,
   Code2,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -189,6 +190,13 @@ function normalizeCorporateSiteConfig(raw: Partial<SiteConfigData>): SiteConfigD
     merged.officePhone.includes('9932 4510')
   ) {
     merged.officePhone = '+968 9570 6749';
+  }
+  if (
+    !merged.officeEmail ||
+    merged.officeEmail === 'info@wwwasar.com' ||
+    merged.officeEmail === 'info@alsahabalrashid.com'
+  ) {
+    merged.officeEmail = 'saadsaid.asar@gmail.com';
   }
   if (
     !merged.officeAddress ||
@@ -2139,12 +2147,78 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
         // Ignore secondary backup errors if Supabase or LocalStorage already succeeded
       }
 
+      // 3. Auto-Forward Inquiry to Google Sheets Webhook & Target Email (if configured)
+      const configuredSheetWebhook = (
+        textOverrides['inquiry-sheet-webhook']?.textValue ||
+        window.localStorage.getItem('asar_google_sheet_webhook') ||
+        ''
+      ).trim();
+      const configuredTargetEmail = (
+        textOverrides['inquiry-target-email']?.textValue ||
+        window.localStorage.getItem('asar_inquiry_target_email') ||
+        'saadsaid.asar@gmail.com'
+      ).trim();
+
+      if (configuredSheetWebhook && configuredSheetWebhook.startsWith('http')) {
+        try {
+          await fetch(configuredSheetWebhook, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              id: cleanInquiry.id,
+              status: cleanInquiry.status.toUpperCase(),
+              clientName: cleanInquiry.clientName,
+              companyName: cleanInquiry.companyName,
+              email: cleanInquiry.email,
+              phone: cleanInquiry.phone,
+              inquiryType: cleanInquiry.inquiryType,
+              projectLocation: cleanInquiry.projectLocation,
+              manpowerDetails: cleanInquiry.manpowerDetails,
+              message: cleanInquiry.message,
+              targetEmail: configuredTargetEmail,
+            }),
+          });
+        } catch {
+          // Continue gracefully if webhook is unreachable
+        }
+      }
+
+      if (configuredTargetEmail && configuredTargetEmail.includes('@')) {
+        try {
+          void fetch(`https://formsubmit.co/ajax/${encodeURIComponent(configuredTargetEmail)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              _subject: `New ASAR Website Inquiry (${cleanInquiry.id.toUpperCase()}) - ${cleanInquiry.companyName}`,
+              _template: 'table',
+              Reference_ID: cleanInquiry.id.toUpperCase(),
+              Submitted_At: new Date().toLocaleString(),
+              Client_Name: cleanInquiry.clientName,
+              Company_Name: cleanInquiry.companyName,
+              Client_Email: cleanInquiry.email,
+              Phone_Number: cleanInquiry.phone,
+              Inquiry_Type: cleanInquiry.inquiryType,
+              Project_Location: cleanInquiry.projectLocation,
+              Manpower_Trades_Count: cleanInquiry.manpowerDetails || 'N/A',
+              Project_Scope_Message: cleanInquiry.message,
+            }),
+          });
+        } catch {
+          // Ignore background email dispatch errors
+        }
+      }
+
       setInquirySubmittedSuccess(
         `Thank you, ${cleanInquiry.clientName}. Your official inquiry (Ref: ${inquiryId.toUpperCase()}) has been received by Al Sahab Al Rashid Trad. & Cont. Co L.L.C. Our estimating and manpower engineering team will respond within 24 business hours.`
       );
       showNotification(
         'success',
-        `Inquiry ${inquiryId.toUpperCase()} submitted to backend database!`
+        `Inquiry ${inquiryId.toUpperCase()} submitted to backend database & Google Sheet/Email!`
       );
 
       setInquiryForm({
@@ -2182,6 +2256,101 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     for (const item of supabaseInquiries) map.set(item.id, item);
     return Array.from(map.values());
   }, [localInquiries, cloudInquiries, supabaseInquiries]);
+
+  // Export all Backend Client Inquiries directly to an Excel / Google Sheets (.csv) file
+  const downloadInquiriesAsExcelCsv = () => {
+    const headers = [
+      'Inquiry ID',
+      'Status',
+      'Client Name',
+      'Company Name',
+      'Email Address',
+      'Phone Number',
+      'Inquiry Type',
+      'Project Location',
+      'Manpower Details',
+      'Message / Scope Details',
+    ];
+    const escapeCsvCell = (val: string) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const rows = allInquiries.map((inq) =>
+      [
+        inq.id,
+        inq.status.toUpperCase(),
+        inq.clientName,
+        inq.companyName,
+        inq.email,
+        inq.phone,
+        inq.inquiryType,
+        inq.projectLocation,
+        inq.manpowerDetails || '',
+        inq.message,
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+
+    const csvContent = '\uFEFF' + [headers.map(escapeCsvCell).join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ASAR_Client_Inquiries_Excel_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showNotification('success', 'Downloaded Client Inquiries Excel / Google Sheet (.csv) file!');
+  };
+
+  const copyGoogleSheetAppsScript = () => {
+    const targetEmail =
+      textOverrides['inquiry-target-email']?.textValue ||
+      window.localStorage.getItem('asar_inquiry_target_email') ||
+      'saadsaid.asar@gmail.com';
+    const scriptCode = `// Paste this inside your Google Sheet: Extensions -> Apps Script -> Deploy -> New deployment -> Web app (Who has access: Anyone)
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Timestamp", "Inquiry ID", "Status", "Client Name", "Company Name", "Email", "Phone", "Inquiry Type", "Project Location", "Manpower Details", "Message"]);
+  }
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([
+    data.timestamp || new Date().toISOString(),
+    data.id || "",
+    data.status || "NEW",
+    data.clientName || "",
+    data.companyName || "",
+    data.email || "",
+    data.phone || "",
+    data.inquiryType || "",
+    data.projectLocation || "",
+    data.manpowerDetails || "",
+    data.message || ""
+  ]);
+  var recipient = data.targetEmail || "${targetEmail}";
+  if (recipient && recipient.indexOf("@") !== -1) {
+    MailApp.sendEmail({
+      to: recipient,
+      subject: "New ASAR Inquiry (" + (data.id || "") + ") - " + (data.companyName || ""),
+      body: "New Client Inquiry Automatically Added to Google Sheet:\\n\\n" +
+            "Client Name: " + data.clientName + "\\n" +
+            "Company: " + data.companyName + "\\n" +
+            "Email: " + data.email + "\\n" +
+            "Phone: " + data.phone + "\\n" +
+            "Inquiry Type: " + data.inquiryType + "\\n" +
+            "Location: " + data.projectLocation + "\\n" +
+            "Manpower: " + data.manpowerDetails + "\\n" +
+            "Message: " + data.message
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON);
+}`;
+    navigator.clipboard.writeText(scriptCode);
+    showNotification(
+      'success',
+      'Copied Google Sheets Auto-Sync Script! Paste in Google Sheets -> Extensions -> Apps Script -> Deploy as Web App.'
+    );
+  };
 
   // Filtered collections
   const filteredGalleryPhotos = useMemo(() => {
@@ -5487,64 +5656,6 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
               </div>
             </div>
 
-            {/* Official Corporate Charter Sheet (OUR AIM, OUR VISION, OUR MISSION & VALUES — Exact Match to Official Document) */}
-            <div className="rounded-2xl border border-orange-200/80 bg-[#f9ebe2]/75 p-8 lg:p-10 space-y-6 text-slate-800 shadow-2xs">
-              <div className="space-y-2">
-                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
-                  {renderEditableElement('charter-aim-title', 'OUR AIM :', 'span')}
-                </h4>
-                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
-                  {siteConfig.ourAim}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
-                  {renderEditableElement('charter-vision-title', 'OUR VISION:', 'span')}
-                </h4>
-                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
-                  {siteConfig.ourVision}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
-                  {renderEditableElement('charter-mission-title', 'OUR MISSION:', 'span')}
-                </h4>
-                <p className="text-sm sm:text-base leading-relaxed text-slate-800">
-                  {siteConfig.ourMission}
-                </p>
-              </div>
-
-              <div className="space-y-4 pt-2">
-                <h4 className="text-sm font-bold tracking-wide uppercase text-slate-900">
-                  {renderEditableElement('charter-values-title', 'VALUES:', 'span')}
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {coreValues.map((valItem) => {
-                    const bulletLines = (valItem.description || '')
-                      .split('\n')
-                      .map((line) => line.replace(/^[•\-*]\s*/, '').trim())
-                      .filter(Boolean);
-
-                    return (
-                      <div key={`charter-${valItem.id}`} className="space-y-2">
-                        <div className="font-bold text-sm sm:text-base text-slate-900">
-                          {valItem.title}
-                        </div>
-                        <ul className="space-y-1.5 text-sm text-slate-800 list-disc pl-6">
-                          {bulletLines.map((point, idx) => (
-                            <li key={idx}>{point}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
             {renderSectionCustomBlocks('about')}
           </div>
         </section>
@@ -6790,14 +6901,110 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
                     Review incoming manpower & EPC tender requests and update their backend status.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => refreshSupabaseInquiries(supabaseUrl, supabaseKey)}
-                  className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-100 inline-flex items-center gap-1.5 text-slate-800 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-[#1e3a8a]" />
-                  <span>Refresh Inquiries</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={downloadInquiriesAsExcelCsv}
+                    className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Excel / Google Sheet (.csv)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => refreshSupabaseInquiries(supabaseUrl, supabaseKey)}
+                    className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-100 inline-flex items-center gap-1.5 text-slate-800 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-[#1e3a8a]" />
+                    <span>Refresh Inquiries</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* GOOGLE SHEETS & EMAIL AUTO-FORWARDING CONFIG */}
+              <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-emerald-950 flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                      <span>Google Sheets & Email Auto-Sync (Send Form Data to Excel / Google Sheet & Email)</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                      Enter the email address where form inquiries should be sent, and/or paste your Google Sheet Web App URL to automatically append every new inquiry row into Google Sheets.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyGoogleSheetAppsScript}
+                    className="px-2.5 py-1.5 font-semibold bg-white text-emerald-900 border border-emerald-300 rounded-lg hover:bg-emerald-100 inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Copy Google Sheet Script</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block font-semibold text-slate-700">
+                    Target Email for Inquiry Data & Excel Alerts
+                    <input
+                      type="email"
+                      placeholder="saadsaid.asar@gmail.com"
+                      value={
+                        textOverrides['inquiry-target-email']?.textValue ||
+                        window.localStorage.getItem('asar_inquiry_target_email') ||
+                        'saadsaid.asar@gmail.com'
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        try {
+                          window.localStorage.setItem('asar_inquiry_target_email', val);
+                        } catch {
+                          // ignore
+                        }
+                        void saveTextOverride({
+                          elementId: 'inquiry-target-email',
+                          textValue: val,
+                          textColor: '',
+                          fontSize: '',
+                          bgColor: '',
+                          hidden: false,
+                          authorId: cloudAuthorId,
+                        });
+                      }}
+                      className="mt-1 w-full px-3 py-1.5 border border-emerald-300 rounded-lg font-mono-tabular bg-white"
+                    />
+                  </label>
+                  <label className="block font-semibold text-slate-700">
+                    Google Sheet Web App URL (Auto-Insert Row)
+                    <input
+                      type="url"
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                      value={
+                        textOverrides['inquiry-sheet-webhook']?.textValue ??
+                        window.localStorage.getItem('asar_google_sheet_webhook') ??
+                        ''
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        try {
+                          window.localStorage.setItem('asar_google_sheet_webhook', val);
+                        } catch {
+                          // ignore
+                        }
+                        void saveTextOverride({
+                          elementId: 'inquiry-sheet-webhook',
+                          textValue: val,
+                          textColor: '',
+                          fontSize: '',
+                          bgColor: '',
+                          hidden: false,
+                          authorId: cloudAuthorId,
+                        });
+                      }}
+                      className="mt-1 w-full px-3 py-1.5 border border-emerald-300 rounded-lg font-mono-tabular bg-white"
+                    />
+                  </label>
+                </div>
               </div>
 
               {allInquiries.length === 0 ? (
