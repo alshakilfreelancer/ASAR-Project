@@ -708,6 +708,20 @@ export default function App() {
   const canWriteCloud = Boolean(isAdminAuthenticated || isVerifiedAdminUser);
   const cloudAuthorId = isVerifiedAdminUser && currentUser ? currentUser.uid : 'admin_portal';
 
+  // Notification Banner & Confirmed Badges State
+  const showNotification = (type: 'success' | 'info' | 'error', text: string, badgeKey?: string) => {
+    setStatusBanner({ type, text });
+    if (badgeKey) {
+      setConfirmedBadgeId(badgeKey);
+      window.setTimeout(() => {
+        setConfirmedBadgeId((prev) => (prev === badgeKey ? null : prev));
+      }, 2800);
+    }
+    window.setTimeout(() => {
+      setStatusBanner((prev) => (prev?.text === text ? null : prev));
+    }, 4500);
+  };
+
   // GitHub Auto-Commit State (Allows Admin Mode edits on website to auto-update GitHub repository & code)
   const [githubRepo, setGithubRepo] = useState<string>(() => {
     try {
@@ -731,26 +745,145 @@ export default function App() {
     }
   });
   const [githubSyncStatus, setGithubSyncStatus] = useState<string | null>(null);
+  const [isSyncingToGithub, setIsSyncingToGithub] = useState(false);
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [showGithubSettingsInBar, setShowGithubSettingsInBar] = useState(false);
 
-  const pushCmsUpdateToGitHub = async (commitMessage = 'Admin Portal Live Update (wwwasar.com)') => {
-    const cleanRepo = githubRepo.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
-    const cleanToken = githubToken.trim();
-    if (!cleanRepo || !cleanToken) return false;
+  // Save GitHub credentials to LocalStorage + Cloud Firestore (Synchronized across all Admin devices)
+  const handleSaveGitHubCredentials = async (repo: string, token: string, branch: string) => {
+    const cleanRepo = repo
+      .trim()
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/\/+$/, '');
+    const cleanToken = token.trim();
+    const cleanBranch = branch.trim() || 'main';
+
+    setGithubRepo(cleanRepo);
+    setGithubToken(cleanToken);
+    setGithubBranch(cleanBranch);
 
     try {
-      setGithubSyncStatus('Syncing changes to GitHub repository...');
+      window.localStorage.setItem('asar_github_repo', cleanRepo);
+      window.localStorage.setItem('asar_github_token', cleanToken);
+      window.localStorage.setItem('asar_github_branch', cleanBranch);
+    } catch {
+      // ignore
+    }
+
+    if (canWriteCloud) {
+      try {
+        await setDoc(doc(db, 'textOverrides', 'github-repo'), {
+          elementId: 'github-repo',
+          textValue: cleanRepo,
+          textColor: '',
+          fontSize: '',
+          bgColor: '',
+          hidden: false,
+          authorId: cloudAuthorId,
+          updatedAt: serverTimestamp(),
+        });
+        await setDoc(doc(db, 'textOverrides', 'github-token'), {
+          elementId: 'github-token',
+          textValue: cleanToken,
+          textColor: '',
+          fontSize: '',
+          bgColor: '',
+          hidden: false,
+          authorId: cloudAuthorId,
+          updatedAt: serverTimestamp(),
+        });
+        await setDoc(doc(db, 'textOverrides', 'github-branch'), {
+          elementId: 'github-branch',
+          textValue: cleanBranch,
+          textColor: '',
+          fontSize: '',
+          bgColor: '',
+          hidden: false,
+          authorId: cloudAuthorId,
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        // ignore credentials cloud save error
+      }
+    }
+
+    showNotification('success', '✓ GitHub configuration saved! Now testing connection...');
+    await pushCmsUpdateToGitHub('Connect GitHub repository to ASAR Admin Portal', true, cleanRepo, cleanToken, cleanBranch);
+  };
+
+  // Push CMS snapshot directly to GitHub repository via GitHub REST API (Auto-updates codebase)
+  const pushCmsUpdateToGitHub = async (
+    commitMessage = 'Admin Portal Live Update (wwwasar.com)',
+    isExplicitAction = false,
+    overrideRepo?: string,
+    overrideToken?: string,
+    overrideBranch?: string
+  ) => {
+    const effectiveRepo = (
+      overrideRepo ??
+      githubRepo ??
+      textOverrides['github-repo']?.textValue ??
+      ''
+    )
+      .trim()
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/\/+$/, '');
+    const effectiveToken = (
+      overrideToken ??
+      githubToken ??
+      textOverrides['github-token']?.textValue ??
+      ''
+    ).trim();
+    const effectiveBranch = (
+      overrideBranch ??
+      githubBranch ??
+      textOverrides['github-branch']?.textValue ??
+      'main'
+    ).trim() || 'main';
+
+    if (!effectiveRepo || !effectiveToken) {
+      const hintMsg = 'GitHub auto-update ready: Enter your GitHub Repo & Token in Tab 5 to auto-commit website edits.';
+      setGithubSyncStatus(hintMsg);
+      if (isExplicitAction) {
+        showNotification(
+          'info',
+          'Please configure your GitHub Repo (owner/repo) and Token in Tab 5 (Data) to push commits directly to GitHub.'
+        );
+      }
+      return false;
+    }
+
+    try {
+      setIsSyncingToGithub(true);
+      setGithubSyncStatus(`Syncing changes to GitHub (${effectiveRepo}@${effectiveBranch})...`);
       const filePath = 'public/cms-live-data.json';
-      const apiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${filePath}`;
+      const apiUrl = `https://api.github.com/repos/${effectiveRepo}/contents/${filePath}`;
       const headers: Record<string, string> = {
         Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${cleanToken}`,
+        Authorization: `Bearer ${effectiveToken}`,
       };
 
       let existingSha: string | undefined;
-      const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(githubBranch || 'main')}`, { headers });
+      const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(effectiveBranch)}`, { headers });
       if (getRes.ok) {
         const fileMeta = await getRes.json();
         existingSha = fileMeta.sha;
+      } else if (getRes.status === 401 || getRes.status === 403) {
+        const errMsg = 'GitHub Token is invalid or lacks "repo" write permissions. Please verify your token.';
+        setGithubSyncStatus(`✗ ${errMsg}`);
+        showNotification('error', errMsg);
+        return false;
+      } else if (getRes.status === 404) {
+        // Test if repository itself exists
+        const repoCheck = await fetch(`https://api.github.com/repos/${effectiveRepo}`, { headers });
+        if (!repoCheck.ok) {
+          const repoErrMsg = `GitHub repository "${effectiveRepo}" not found. Verify repository name.`;
+          setGithubSyncStatus(`✗ ${repoErrMsg}`);
+          showNotification('error', repoErrMsg);
+          return false;
+        }
       }
 
       const payloadJson = JSON.stringify(
@@ -761,6 +894,9 @@ export default function App() {
           runningProjects,
           galleryPhotos,
           completedProjects,
+          kpiCards,
+          coreValues,
+          manpowerGroups,
           textOverrides,
           customBlocks,
         },
@@ -778,22 +914,101 @@ export default function App() {
         body: JSON.stringify({
           message: commitMessage,
           content: base64Content,
-          branch: githubBranch || 'main',
+          branch: effectiveBranch,
           ...(existingSha ? { sha: existingSha } : {}),
         }),
       });
 
       if (putRes.ok) {
-        setGithubSyncStatus(`✓ Committed to GitHub (${cleanRepo}@${githubBranch || 'main'})`);
+        const resData = await putRes.json().catch(() => ({}));
+        const commitSha = resData.commit?.sha?.slice(0, 7) || 'latest';
+        const msg = `✓ Committed to GitHub (${effectiveRepo}@${effectiveBranch} #${commitSha})`;
+        setGithubSyncStatus(msg);
+        showNotification('success', `✓ Live edits automatically committed to GitHub (${commitSha})!`);
         return true;
       } else {
         const errData = await putRes.json().catch(() => ({}));
-        setGithubSyncStatus(`GitHub sync error: ${errData.message || putRes.statusText}`);
+        const errDetail = errData.message || putRes.statusText;
+        setGithubSyncStatus(`GitHub commit error: ${errDetail}`);
+        showNotification('error', `GitHub update failed: ${errDetail}`);
         return false;
       }
     } catch (err) {
-      setGithubSyncStatus(`GitHub error: ${err instanceof Error ? err.message : String(err)}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setGithubSyncStatus(`GitHub error: ${errMsg}`);
+      showNotification('error', `GitHub error: ${errMsg}`);
       return false;
+    } finally {
+      setIsSyncingToGithub(false);
+    }
+  };
+
+  // 1-Click Send Test Inquiry Email to User's Gmail (saadsaid.asar@gmail.com & alshakilfreelancer@gmail.com)
+  const handleSendTestInquiryEmail = async () => {
+    setIsSendingTestEmail(true);
+    const testRefId = `TEST-${Date.now().toString().slice(-4)}`;
+    const recipients = ['saadsaid.asar@gmail.com', 'alshakilfreelancer@gmail.com'];
+    const customInquiryEmail = (
+      textOverrides['inquiry-target-email']?.textValue ||
+      window.localStorage.getItem('asar_inquiry_target_email') ||
+      ''
+    ).trim();
+    if (customInquiryEmail && customInquiryEmail.includes('@') && !recipients.includes(customInquiryEmail)) {
+      recipients.push(customInquiryEmail);
+    }
+
+    try {
+      const sendPromises = recipients.map(async (rcpt) => {
+        try {
+          const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(rcpt)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              _subject: `TEST INQUIRY (${testRefId}) - Al Sahab Al Rashid Trad. & Cont. Co L.L.C`,
+              _template: 'table',
+              _captcha: 'false',
+              _cc: recipients.join(','),
+              Reference_ID: testRefId,
+              Test_Status: 'CONFIRMED LIVE INQUIRY DISPATCH',
+              Company_Name: 'Al Sahab Al Rashid Trad. & Cont. Co L.L.C (ASAR)',
+              Client_Name: 'ASAR Admin Verification Test',
+              Email: rcpt,
+              Phone: '+968 9321 0000',
+              Inquiry_Type: 'Skilled & Unskilled Manpower Supply / Civil Construction',
+              Project_Location: 'Muscat, Sultanate of Oman',
+              Manpower_Trades_Count: 'Civil Foremen, Masons, Steel Fixers, Electricians',
+              Project_Scope_Message:
+                'This is a live test inquiry confirming that client submissions from wwwasar.com arrive directly in your Gmail inbox.',
+              Sent_At: new Date().toLocaleString(),
+            }),
+          });
+          return { email: rcpt, ok: res.ok };
+        } catch {
+          return { email: rcpt, ok: false };
+        }
+      });
+
+      const results = await Promise.all(sendPromises);
+      const succeeded = results.filter((r) => r.ok).map((r) => r.email);
+
+      if (succeeded.length > 0) {
+        showNotification(
+          'success',
+          `✓ Test inquiry sent to ${succeeded.join(' & ')}! Check your Gmail Inbox (and Spam on first delivery).`
+        );
+      } else {
+        showNotification(
+          'info',
+          `Test inquiry triggered to ${recipients.join(' & ')}. Check your Gmail inbox for FormSubmit confirmation.`
+        );
+      }
+    } catch {
+      showNotification('error', 'Error sending test inquiry email.');
+    } finally {
+      setIsSendingTestEmail(false);
     }
   };
 
@@ -824,19 +1039,6 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showNotification('success', 'Downloaded permanent TypeScript code file (permanent-cms-code-update.ts)!');
-  };
-
-  const showNotification = (type: 'success' | 'info' | 'error', text: string, badgeKey?: string) => {
-    setStatusBanner({ type, text });
-    if (badgeKey) {
-      setConfirmedBadgeId(badgeKey);
-      window.setTimeout(() => {
-        setConfirmedBadgeId((prev) => (prev === badgeKey ? null : prev));
-      }, 2800);
-    }
-    window.setTimeout(() => {
-      setStatusBanner((prev) => (prev?.text === text ? null : prev));
-    }, 4500);
   };
 
   // Open the Universal Photo Editor for ANY image on the website (Strictly requires Admin Login)
@@ -1144,6 +1346,15 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
             const data = d.data() as TextOverrideItem;
             map[data.elementId || d.id] = data;
           });
+          if (map['github-repo']?.textValue) {
+            setGithubRepo((prev) => prev || map['github-repo'].textValue);
+          }
+          if (map['github-token']?.textValue) {
+            setGithubToken((prev) => prev || map['github-token'].textValue);
+          }
+          if (map['github-branch']?.textValue) {
+            setGithubBranch((prev) => prev || map['github-branch'].textValue);
+          }
           setTextOverrides((prev) => {
             const merged = { ...prev, ...map };
             saveToStorage(STORAGE_KEYS.TEXT_OVERRIDES, merged);
@@ -1274,7 +1485,12 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
   // Save a single inline Text/Heading/Block Override to LocalStorage + Cloud Firestore + GitHub
   const saveTextOverride = async (override: TextOverrideItem) => {
     const cleanId = override.elementId.replace(/[^a-zA-Z0-9_-]/g, '-');
-    const isBackendSetting = cleanId === 'inquiry-target-email' || cleanId === 'inquiry-sheet-webhook';
+    const isBackendSetting =
+      cleanId === 'inquiry-target-email' ||
+      cleanId === 'inquiry-sheet-webhook' ||
+      cleanId === 'github-repo' ||
+      cleanId === 'github-token' ||
+      cleanId === 'github-branch';
     if (!isAdminAuthenticated && !isBackendSetting) {
       setShowAdminLoginModal(true);
       return;
@@ -2286,17 +2502,22 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
         // Ignore secondary backup errors if Supabase or LocalStorage already succeeded
       }
 
-      // 3. Auto-Forward Inquiry to Google Sheets Webhook & Target Email (if configured)
+      // 3. Auto-Forward Inquiry to Google Sheets Webhook & User's Gmail (saadsaid.asar@gmail.com & alshakilfreelancer@gmail.com)
       const configuredSheetWebhook = (
         textOverrides['inquiry-sheet-webhook']?.textValue ||
         window.localStorage.getItem('asar_google_sheet_webhook') ||
         ''
       ).trim();
-      const configuredTargetEmail = (
+
+      const inquiryRecipients = ['saadsaid.asar@gmail.com', 'alshakilfreelancer@gmail.com'];
+      const customInquiryEmail = (
         textOverrides['inquiry-target-email']?.textValue ||
         window.localStorage.getItem('asar_inquiry_target_email') ||
-        'saadsaid.asar@gmail.com'
+        ''
       ).trim();
+      if (customInquiryEmail && customInquiryEmail.includes('@') && !inquiryRecipients.includes(customInquiryEmail)) {
+        inquiryRecipients.push(customInquiryEmail);
+      }
 
       if (configuredSheetWebhook && configuredSheetWebhook.startsWith('http')) {
         try {
@@ -2316,7 +2537,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
               projectLocation: cleanInquiry.projectLocation,
               manpowerDetails: cleanInquiry.manpowerDetails,
               message: cleanInquiry.message,
-              targetEmail: configuredTargetEmail,
+              targetEmail: inquiryRecipients.join(', '),
             }),
           });
         } catch {
@@ -2324,9 +2545,9 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
         }
       }
 
-      if (configuredTargetEmail && configuredTargetEmail.includes('@')) {
+      for (const rcpt of inquiryRecipients) {
         try {
-          void fetch(`https://formsubmit.co/ajax/${encodeURIComponent(configuredTargetEmail)}`, {
+          void fetch(`https://formsubmit.co/ajax/${encodeURIComponent(rcpt)}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -2335,6 +2556,8 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
             body: JSON.stringify({
               _subject: `New ASAR Website Inquiry (${cleanInquiry.id.toUpperCase()}) - ${cleanInquiry.companyName}`,
               _template: 'table',
+              _captcha: 'false',
+              _cc: inquiryRecipients.join(','),
               Reference_ID: cleanInquiry.id.toUpperCase(),
               Submitted_At: new Date().toLocaleString(),
               Client_Name: cleanInquiry.clientName,
@@ -2353,11 +2576,11 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
       }
 
       setInquirySubmittedSuccess(
-        `Thank you, ${cleanInquiry.clientName}. Your official inquiry (Ref: ${inquiryId.toUpperCase()}) has been received by Al Sahab Al Rashid Trad. & Cont. Co L.L.C. Our estimating and manpower engineering team will respond within 24 business hours.`
+        `Thank you, ${cleanInquiry.clientName}. Your official inquiry (Ref: ${inquiryId.toUpperCase()}) has been received by Al Sahab Al Rashid Trad. & Cont. Co L.L.C and forwarded directly to our engineering team at ${inquiryRecipients.join(' & ')}. Our estimating team will respond within 24 business hours.`
       );
       showNotification(
         'success',
-        `Inquiry ${inquiryId.toUpperCase()} submitted to backend database & Google Sheet/Email!`
+        `Inquiry ${inquiryId.toUpperCase()} submitted! Forwarded to ${inquiryRecipients.join(' & ')}.`
       );
 
       setInquiryForm({
@@ -6817,19 +7040,140 @@ function doPost(e) {
                   </div>
                 )}
 
-                {/* TAB 5: BACKEND, INQUIRIES, EXCEL EXPORT & SECURITY */}
+                {/* TAB 5: BACKEND, INQUIRIES, EXCEL EXPORT, GITHUB & SECURITY */}
                 {activeAdminEditTab === 'backend' && (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-1.5">
+                  <div className="space-y-2 text-xs">
+                    {/* Primary Save Action */}
+                    <button
+                      type="button"
+                      disabled={isSyncingToGithub}
+                      onClick={async () => {
+                        await syncAllCollectionsToCloud();
+                        await pushCmsUpdateToGitHub('Manual Admin Portal Sync from Tab 5', true);
+                      }}
+                      className="w-full py-2 px-3 text-xs font-bold text-white bg-gradient-to-r from-[#1e3a8a] to-blue-700 hover:from-blue-900 hover:to-blue-800 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-[#f97316] ${isSyncingToGithub ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingToGithub ? 'Syncing to Cloud & GitHub...' : 'Save & Confirm All Edits (Cloud + GitHub)'}</span>
+                    </button>
+
+                    {/* Quick Gmail Inquiry Dispatch Card */}
+                    <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-emerald-950 flex items-center gap-1.5 text-[11px]">
+                          <Mail className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                          <span>Client Inquiries to Gmail</span>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
+                          Active
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-emerald-800 leading-tight">
+                        Client inquiries forward to <strong>saadsaid.asar@gmail.com</strong> &amp; <strong>alshakilfreelancer@gmail.com</strong>.
+                      </p>
                       <button
                         type="button"
-                        onClick={syncAllCollectionsToCloud}
-                        className="col-span-2 py-2 px-3 text-xs font-bold text-white bg-[#1e3a8a] hover:bg-blue-900 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        disabled={isSendingTestEmail}
+                        onClick={handleSendTestInquiryEmail}
+                        className="w-full py-1.5 px-2 text-[11px] font-bold bg-white text-emerald-900 border border-emerald-300 rounded-md hover:bg-emerald-100 flex items-center justify-center gap-1 cursor-pointer transition-colors disabled:opacity-60"
                       >
-                        <RefreshCw className="w-3.5 h-3.5 text-[#f97316]" />
-                        <span>Save & Confirm All Edits (Cloud + GitHub)</span>
+                        <Send className={`w-3 h-3 text-emerald-700 ${isSendingTestEmail ? 'animate-spin' : ''}`} />
+                        <span>{isSendingTestEmail ? 'Sending Test to Gmail...' : 'Send Test Inquiry to My Gmail'}</span>
                       </button>
+                    </div>
 
+                    {/* GitHub Auto-Commit Card */}
+                    <div className="p-2.5 bg-blue-50/80 border border-blue-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-[#1e3a8a] flex items-center gap-1.5 text-[11px]">
+                          <Code2 className="w-3.5 h-3.5 text-[#f97316] shrink-0" />
+                          <span>GitHub Auto-Commit</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowGithubSettingsInBar((prev) => !prev)}
+                          className="text-[10px] font-bold text-[#1e3a8a] hover:underline cursor-pointer"
+                        >
+                          {showGithubSettingsInBar ? 'Hide Config' : githubRepo ? 'Edit Config' : 'Configure'}
+                        </button>
+                      </div>
+
+                      <div className="text-[10px] text-slate-600 flex items-center justify-between gap-1">
+                        <span className="truncate">
+                          {githubRepo ? (
+                            <span className="text-emerald-700 font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                              {githubRepo} ({githubBranch || 'main'})
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+                              Not linked yet
+                            </span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isSyncingToGithub}
+                          onClick={() => pushCmsUpdateToGitHub('Manual GitHub commit from Admin Studio', true)}
+                          className="px-2 py-0.5 text-[10px] font-bold bg-[#f97316] text-white rounded hover:bg-orange-600 cursor-pointer disabled:opacity-60 shrink-0"
+                        >
+                          {isSyncingToGithub ? 'Pushing...' : 'Push to GitHub'}
+                        </button>
+                      </div>
+
+                      {showGithubSettingsInBar && (
+                        <div className="space-y-1.5 pt-1.5 border-t border-blue-200">
+                          <label className="block text-[10px] font-bold text-slate-700">
+                            Repo (owner/repo):
+                            <input
+                              type="text"
+                              value={githubRepo}
+                              placeholder="e.g. username/asar-website"
+                              onChange={(e) => setGithubRepo(e.target.value)}
+                              className="mt-0.5 w-full px-2 py-1 text-[11px] bg-white border border-slate-300 rounded font-mono-tabular"
+                            />
+                          </label>
+                          <label className="block text-[10px] font-bold text-slate-700">
+                            Personal Access Token:
+                            <input
+                              type="password"
+                              value={githubToken}
+                              placeholder="ghp_xxxxxxxxxxxx"
+                              onChange={(e) => setGithubToken(e.target.value)}
+                              className="mt-0.5 w-full px-2 py-1 text-[11px] bg-white border border-slate-300 rounded font-mono-tabular"
+                            />
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <label className="flex-1 block text-[10px] font-bold text-slate-700">
+                              Branch:
+                              <input
+                                type="text"
+                                value={githubBranch}
+                                placeholder="main"
+                                onChange={(e) => setGithubBranch(e.target.value)}
+                                className="mt-0.5 w-full px-2 py-1 text-[11px] bg-white border border-slate-300 rounded font-mono-tabular"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveGitHubCredentials(githubRepo, githubToken, githubBranch)}
+                              className="mt-3.5 px-3 py-1 text-[11px] font-bold bg-[#1e3a8a] text-white rounded hover:bg-blue-900 cursor-pointer"
+                            >
+                              Save &amp; Test
+                            </button>
+                          </div>
+                          {githubSyncStatus && (
+                            <div className="text-[10px] font-mono-tabular text-slate-600 bg-white p-1 rounded border border-slate-200 break-all">
+                              {githubSyncStatus}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Secondary Admin Action Buttons */}
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
                       <button
                         type="button"
                         onClick={() => setShowBackendConfigModal(true)}
@@ -7433,36 +7777,50 @@ function doPost(e) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block font-semibold text-slate-700">
-                    Target Email for Inquiry Data & Excel Alerts
-                    <input
-                      type="email"
-                      placeholder="saadsaid.asar@gmail.com"
-                      value={
-                        textOverrides['inquiry-target-email']?.textValue ||
-                        window.localStorage.getItem('asar_inquiry_target_email') ||
-                        'saadsaid.asar@gmail.com'
-                      }
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        try {
-                          window.localStorage.setItem('asar_inquiry_target_email', val);
-                        } catch {
-                          // ignore
+                  <div className="space-y-1.5">
+                    <label className="block font-semibold text-slate-700">
+                      Additional Target Email for Inquiries
+                      <input
+                        type="email"
+                        placeholder="saadsaid.asar@gmail.com"
+                        value={
+                          textOverrides['inquiry-target-email']?.textValue ||
+                          window.localStorage.getItem('asar_inquiry_target_email') ||
+                          'saadsaid.asar@gmail.com'
                         }
-                        void saveTextOverride({
-                          elementId: 'inquiry-target-email',
-                          textValue: val,
-                          textColor: '',
-                          fontSize: '',
-                          bgColor: '',
-                          hidden: false,
-                          authorId: cloudAuthorId,
-                        });
-                      }}
-                      className="mt-1 w-full px-3 py-1.5 border border-emerald-300 rounded-lg font-mono-tabular bg-white"
-                    />
-                  </label>
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          try {
+                            window.localStorage.setItem('asar_inquiry_target_email', val);
+                          } catch {
+                            // ignore
+                          }
+                          void saveTextOverride({
+                            elementId: 'inquiry-target-email',
+                            textValue: val,
+                            textColor: '',
+                            fontSize: '',
+                            bgColor: '',
+                            hidden: false,
+                            authorId: cloudAuthorId,
+                          });
+                        }}
+                        className="mt-1 w-full px-3 py-1.5 border border-emerald-300 rounded-lg font-mono-tabular bg-white"
+                      />
+                    </label>
+                    <div className="text-[11px] text-emerald-800">
+                      Active Inboxes: <strong>saadsaid.asar@gmail.com</strong> &amp; <strong>alshakilfreelancer@gmail.com</strong>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isSendingTestEmail}
+                      onClick={handleSendTestInquiryEmail}
+                      className="px-3 py-1.5 text-xs font-bold bg-white text-emerald-900 border border-emerald-300 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    >
+                      <Send className={`w-3.5 h-3.5 text-emerald-700 ${isSendingTestEmail ? 'animate-spin' : ''}`} />
+                      <span>{isSendingTestEmail ? 'Sending Test Inquiry...' : 'Send Test Inquiry to My Gmail Now'}</span>
+                    </button>
+                  </div>
                   <label className="block font-semibold text-slate-700">
                     Google Sheet Web App URL (Auto-Insert Row)
                     <input
@@ -7685,16 +8043,30 @@ function doPost(e) {
                 </label>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-blue-200">
+                <button
+                  type="button"
+                  onClick={() => handleSaveGitHubCredentials(githubRepo, githubToken, githubBranch)}
+                  className="px-4 py-2 font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-blue-900 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4 text-[#f97316]" />
+                  <span>Save &amp; Link GitHub to Cloud</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSyncingToGithub}
+                  onClick={() => pushCmsUpdateToGitHub('Manual Admin Portal Sync to GitHub', true)}
+                  className="px-4 py-2 font-bold bg-[#f97316] text-white rounded-lg hover:bg-orange-600 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncingToGithub ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingToGithub ? 'Pushing to GitHub...' : 'Push to GitHub Now'}</span>
+                </button>
+              </div>
+
               {githubSyncStatus && (
                 <div className="p-2.5 bg-white border border-blue-200 rounded-lg font-mono-tabular text-[11px] text-slate-700 flex items-center justify-between gap-2">
                   <span>{githubSyncStatus}</span>
-                  <button
-                    type="button"
-                    onClick={() => pushCmsUpdateToGitHub('Manual Admin Portal Sync to GitHub')}
-                    className="px-2.5 py-1 font-semibold bg-[#f97316] text-white rounded cursor-pointer"
-                  >
-                    Push to GitHub Now
-                  </button>
                 </div>
               )}
             </div>
