@@ -95,6 +95,13 @@ export interface GalleryPhotoItem {
   authorId: string;
 }
 
+export interface SiteGalleryPhotoItem {
+  id: string;
+  title: string;
+  caption: string;
+  imageUrl: string;
+}
+
 export interface CompletedProjectItem {
   id: string;
   title: string;
@@ -104,7 +111,9 @@ export interface CompletedProjectItem {
   contractValue: string;
   category: string;
   description: string;
+  fullDetails?: string;
   imageUrl: string;
+  sitePhotos?: SiteGalleryPhotoItem[];
   authorId: string;
 }
 
@@ -1180,81 +1189,387 @@ export const DEFAULT_GALLERY_PHOTOS: GalleryPhotoItem[] = [
 
 export const DEFAULT_COMPLETED_PROJECTS: CompletedProjectItem[] = [
   {
-    id: 'comp-1',
-    title: 'Muscat Administrative Complex Traditional Stone Facade & Superstructure',
-    client: 'Al Maha Commercial Developments LLC',
-    location: 'Bausher, Muscat Governorate',
+    id: 'comp-sqh-salalah',
+    title: 'Sultan Qaboos Hospital - Salalah',
+    client: 'Ministry of Health — Sultanate of Oman',
+    location: 'Salalah, Dhofar Governorate',
     completionYear: '2025',
-    contractValue: 'OMR 2.4M · 100% On-Time Handover',
+    contractValue: 'Turnkey Healthcare EPC · 100% On-Time Handover',
     category: 'Civil Works',
     description:
-      'Completed a prestigious G+5 multi-story commercial complex featuring reinforced concrete superstructure, traditional Omani arched stone cladding, and complete basement tanking waterproofing.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.buildingCommercialStoneFacade,
+      'Comprehensive civil, structural, and healthcare infrastructure works for Sultan Qaboos Hospital in Salalah, including reinforced concrete superstructures, inpatient pavilions, grand entrance canopy, and medical utility networks.',
+    fullDetails:
+      'Al Sahab Al Rashid Trad. & Cont. Co L.L.C executed major civil, structural, and infrastructure packages for the landmark Sultan Qaboos Hospital in Salalah, Dhofar Governorate. Our engineering and skilled workforce teams delivered multi-story reinforced concrete hospital blocks, deep foundation waterproofing, architectural stone and facade finishes, grand entrance canopy structures, internal road networks, storm drainage systems, and specialized MEP support foundations under strict Ministry of Health QA/QC and HSE standards.',
+    imageUrl: '/assets/aistudio/sqh_salalah_front_elevation_entrance.webp',
+    sitePhotos: [
+      {
+        id: 'sqh-salalah-real-1',
+        title: 'Sultan Qaboos Hospital Salalah — Grand Front Facade & Entrance Colonnade',
+        caption: 'Actual on-site photograph of the completed multi-story hospital complex, architectural stone finishes, entrance canopy, and landscaped palm plaza in Salalah.',
+        imageUrl: '/assets/aistudio/sqh_salalah_front_elevation_entrance.webp',
+      },
+      {
+        id: 'sqh-salalah-real-2',
+        title: 'Hospital Campus, Equipment Deployment & External Circulation',
+        caption: 'On-site daylight view showing active civil machinery, JCB backhoe loaders, telehandlers, asphalt circulation roads, and inpatient hospital wings.',
+        imageUrl: '/assets/aistudio/sqh_salalah_campus_daylight_machinery.webp',
+      },
+      {
+        id: 'sqh-salalah-real-3',
+        title: 'Hospital Wings, Structural Scaffolding & Grand Canopy',
+        caption: 'On-site evening angle perspective displaying vertical window louvres, multi-level inpatient blocks, and specialized structural entrance framework.',
+        imageUrl: '/assets/aistudio/sqh_salalah_sunset_wings_scaffolding.webp',
+      },
+      {
+        id: 'sqh-salalah-4',
+        title: 'Hospital Campus Aerial Perspective & Master Layout',
+        caption: 'Full campus layout showing inpatient towers, outpatient specialist clinics, and access road networks.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.masterPlanHospitalAerial,
+      },
+      {
+        id: 'sqh-salalah-5',
+        title: 'Reinforced Concrete Superstructure & Multi-Story Framing',
+        caption: 'High-strength reinforced concrete columns, floor slabs, and perimeter scaffolding during structural execution.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.buildingSuperstructureSkeleton,
+      },
+      {
+        id: 'sqh-salalah-6',
+        title: 'Deep Foundation Footings & Bitumen Waterproofing Works',
+        caption: 'Precision excavation, reinforced concrete column footings, and protective bitumen damp-proofing.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.foundationFootingsWaterproofing,
+      },
+      {
+        id: 'sqh-salalah-7',
+        title: 'Architectural Facade & Courtyard Finishing Works',
+        caption: 'Completed exterior plaster, traditional architectural detailing, and courtyard structural packages.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.buildingCourtyardComplex,
+      },
+    ],
     authorId: 'system_seed',
   },
   {
-    id: 'comp-2',
-    title: 'Institutional Healthcare Medical Complex Master Plan Package',
-    client: 'Ministry of Health Infrastructure Directorate',
-    location: 'Sultanate of Oman Healthcare Campus',
+    id: 'comp-sqh-khasab',
+    title: 'Sultan Qaboos Hospital - Khasab',
+    client: 'Ministry of Health — Sultanate of Oman',
+    location: 'Khasab, Musandam Governorate',
     completionYear: '2025',
-    contractValue: 'Turnkey EPC · Zero LTI Handover',
-    category: 'Institutional Civil Works',
+    contractValue: 'Regional Hospital EPC · Zero LTI Safety Record',
+    category: 'Civil Works',
     description:
-      'Executed civil superstructure, patient pavilions, grand entrance canopy, access road networks, fountains, and dedicated healthcare utility infrastructure.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.masterPlanMedicalComplex1,
+      'Execution of structural concrete works, geotechnical site preparation, hospital building superstructures, perimeter boundary walls, and utility infrastructure for Sultan Qaboos Hospital in Khasab.',
+    fullDetails:
+      'For the Sultan Qaboos Hospital project in Khasab (Musandam Governorate), Al Sahab Al Rashid Trad. & Cont. Co L.L.C deployed specialized civil engineering teams, heavy earthmoving equipment, and certified tradesmen to execute structural foundations, multi-story concrete framing, coastal and mountain slope protection, utility basement boxes, and architectural blockwork. The project was delivered with zero Lost Time Injuries (LTI) and full compliance with Omani healthcare engineering specifications.',
+    imageUrl: '/assets/aistudio/sqh_khasab_front_facade_theme.webp',
+    sitePhotos: [
+      {
+        id: 'sqh-khasab-1',
+        title: 'Sultan Qaboos Hospital Khasab — Main Architectural Facade (Theme Cover)',
+        caption: 'Signature modern facade with waterfront promenade, palm landscaping, and completed multi-story healthcare facility in Khasab.',
+        imageUrl: '/assets/aistudio/sqh_khasab_front_facade_theme.webp',
+      },
+      {
+        id: 'sqh-khasab-2',
+        title: 'Hospital Campus Master Plan & Architectural Layout',
+        caption: 'Master layout showing central curved healthcare blocks, emergency wings, helipad access, and perimeter circulation.',
+        imageUrl: '/assets/aistudio/sqh_khasab_campus_aerial_masterplan.webp',
+      },
+      {
+        id: 'sqh-khasab-3',
+        title: 'Promenade Street-Level View & Ground Floor Facilities',
+        caption: 'Streetscape perspective showing patient access avenues, integrated commercial/cafe zones, and exterior finishes.',
+        imageUrl: '/assets/aistudio/sqh_khasab_promenade_streetscape.webp',
+      },
+      {
+        id: 'sqh-khasab-4',
+        title: 'Morning Site Briefing & Workforce Alignment',
+        caption: 'Over 30 ASAR construction professionals and supervisors conducting morning safety and execution briefing under the structural canopy.',
+        imageUrl: '/assets/aistudio/sqh_khasab_site_briefing_canopy.webp',
+      },
+      {
+        id: 'sqh-khasab-5',
+        title: 'ASAR & Al Tasnim Engineering Toolbox Meeting',
+        caption: 'On-site technical review and daily safety briefing conducted by senior civil engineers and HSE officers inside the facility structure.',
+        imageUrl: '/assets/aistudio/sqh_khasab_toolbox_talk_interior.webp',
+      },
+      {
+        id: 'sqh-khasab-6',
+        title: 'Heavy Foundation Rebar Slab & Vertical Column Cages',
+        caption: 'Complex rebar matrix tying, starter bars, and column cage erection for the hospital main structural foundations.',
+        imageUrl: '/assets/aistudio/sqh_khasab_rebar_foundation_slab.webp',
+      },
+      {
+        id: 'sqh-khasab-7',
+        title: 'Raft Foundation Steel Mesh & Skilled Fixing Crew',
+        caption: 'ASAR rebar fixing crew deploying dual-layer reinforcement mesh with full PPE and safety adherence.',
+        imageUrl: '/assets/aistudio/sqh_khasab_slab_rebar_crew.webp',
+      },
+      {
+        id: 'sqh-khasab-8',
+        title: 'Vast Floor Slab Rebar Deck & Formwork Staging',
+        caption: 'Upper level suspended concrete slab rebar installation spanning the entire hospital ward block with timber beam falsework.',
+        imageUrl: '/assets/aistudio/sqh_khasab_top_deck_reinforcement.webp',
+      },
+      {
+        id: 'sqh-khasab-9',
+        title: 'Multi-Story Scaffolding & Column Shuttering Network',
+        caption: 'Dense structural staging, perimeter guardrails, and vertical column formwork during peak superstructure construction.',
+        imageUrl: '/assets/aistudio/sqh_khasab_multistory_scaffolding.webp',
+      },
+      {
+        id: 'sqh-khasab-10',
+        title: 'Slab Formwork Decking & Structural Shoring',
+        caption: 'High-load shoring towers and H20 timber beam decking ready for reinforcement placement and concrete casting.',
+        imageUrl: '/assets/aistudio/sqh_khasab_formwork_decking.webp',
+      },
+      {
+        id: 'sqh-khasab-11',
+        title: 'Substructure Footings & Bitumen Waterproofing',
+        caption: 'Cast column pediments, compaction grading with heavy roller, and two-coat bitumen damp-proof membrane application.',
+        imageUrl: '/assets/aistudio/sqh_khasab_substructure_waterproofing.webp',
+      },
+      {
+        id: 'sqh-khasab-12',
+        title: 'Night Shift Concrete Shuttering & Tower Crane Operations',
+        caption: 'Night-shift column formwork alignment under floodlighting to ensure monolithic concrete curing in optimal temperatures.',
+        imageUrl: '/assets/aistudio/sqh_khasab_night_column_casting.webp',
+      },
+      {
+        id: 'sqh-khasab-13',
+        title: 'Specialized Circular Chamber & Retaining Formwork',
+        caption: 'Precision circular utility shaft and water management chamber with specialized internal cross-braced shuttering.',
+        imageUrl: '/assets/aistudio/sqh_khasab_circular_chamber_formwork.webp',
+      },
+      {
+        id: 'sqh-khasab-14',
+        title: 'Circular Deep Foundation Shaft Rebar Reinforcement',
+        caption: 'Heavy cylindrical rebar cage with yellow safety rebar caps and foundation base tie-ins.',
+        imageUrl: '/assets/aistudio/sqh_khasab_circular_shaft_rebar.webp',
+      },
+    ],
     authorId: 'system_seed',
   },
   {
-    id: 'comp-3',
-    title: 'High-Voltage 400kV Substation Transmission Infrastructure',
-    client: 'Oman Electricity Transmission Company (OETC)',
-    location: 'Al Dhahirah Grid Station Corridor',
-    completionYear: '2024',
-    contractValue: '48 Tower Foundations · ISO Certified',
+    id: 'comp-al-kamil',
+    title: 'Al Kamil Project',
+    client: 'Ministry of Health & Regional Infrastructure Authorities',
+    location: 'Al Kamil Wal Wafi, South Ash Sharqiyah Governorate',
+    completionYear: '2025',
+    contractValue: 'Turnkey Healthcare & Civil EPC · 100% Quality Handover',
+    category: 'Civil Works',
+    description:
+      'Turnkey civil, structural, and infrastructure works for the Al Kamil Hospital and healthcare complex in South Ash Sharqiyah, including multi-story reinforced concrete superstructure, foundation retaining trenches, Doka timber slab formwork, and perimeter masonry works.',
+    fullDetails:
+      'For the Al Kamil Project in Al Kamil Wal Wafi (South Ash Sharqiyah Governorate), Al Sahab Al Rashid Trad. & Cont. Co L.L.C executed extensive civil, structural, and architectural construction packages. Scope delivered includes deep foundation trenches and retaining wall rebar cages with timber catwalk bridges, multi-level reinforced concrete superstructure framing, high-density modular scaffolding falsework, Doka H20 timber beam slab decking and shoring towers, Manitou heavy telehandler crane rigging, external masonry blockwork partitions, and comprehensive site drainage and protection works under strict Omani safety standards.',
+    imageUrl: '/assets/aistudio/al_kamil_panoramic_elevation.webp',
+    sitePhotos: [
+      {
+        id: 'al-kamil-real-1',
+        title: 'Al Kamil Project — Main Hospital Block Elevation & Structural Frame (Theme Cover)',
+        caption: 'Actual on-site panoramic photograph showing the full multi-tier reinforced concrete building superstructure, perimeter masonry blockwork, roof rebar decking, and heavy scaffolding staging at Al Kamil Wal Wafi.',
+        imageUrl: '/assets/aistudio/al_kamil_panoramic_elevation.webp',
+      },
+      {
+        id: 'al-kamil-real-2',
+        title: 'Substructure Retaining Wall & Foundation Rebar Trench',
+        caption: 'Deep foundation trench execution showing dense vertical rebar cage fixing, starter reinforcement dowels, protective timber shoring, and timber catwalk bridge for safe site traversal.',
+        imageUrl: '/assets/aistudio/al_kamil_foundation_rebar_trench.webp',
+      },
+      {
+        id: 'al-kamil-real-3',
+        title: 'Heavy Structural Scaffolding & Column Shuttering Network',
+        caption: 'Dense load-bearing modular scaffolding towers, steel formwork shuttering, and vertical column rebar matrix during superstructure casting.',
+        imageUrl: '/assets/aistudio/al_kamil_scaffolding_columns.webp',
+      },
+      {
+        id: 'al-kamil-real-4',
+        title: 'Multi-Tier Concrete Frame & Heavy Telehandler Rigging',
+        caption: 'Active construction yard view showing multi-story reinforced concrete frame, Manitou heavy telescopic handler crane, formwork timber bundles, and access ramps.',
+        imageUrl: '/assets/aistudio/al_kamil_structural_frame_crane.webp',
+      },
+      {
+        id: 'al-kamil-real-5',
+        title: 'Doka H20 Timber Beam Slab Decking & Shoring Falsework',
+        caption: 'Upper level suspended slab formwork featuring yellow Doka H20 timber joists, Delmon heavy-duty shoring props, and access steel ladder for safe deck inspection.',
+        imageUrl: '/assets/aistudio/al_kamil_doka_timber_formwork.webp',
+      },
+      {
+        id: 'al-kamil-6',
+        title: 'Precision Site Grading & Sub-Base Compaction',
+        caption: 'Bulk earthmoving, formation level grading, and geotechnical compaction across the Al Kamil site.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.excavatorGradingLevels,
+      },
+      {
+        id: 'al-kamil-7',
+        title: 'Rip-Rap Stone Pitching & Wadi Flood Protection',
+        caption: 'Engineered stone pitching and concrete drainage aprons for wadi flood runoff control.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.riprapStonePitching,
+      },
+    ],
+    authorId: 'system_seed',
+  },
+  {
+    id: 'comp-al-mazuinah',
+    title: 'Al Mazuinah Project',
+    client: 'Al Mazuinah Free Zone / Regional Infrastructure Authority',
+    location: 'Al Mazyunah (Al Mazuinah), Dhofar Governorate',
+    completionYear: '2025',
+    contractValue: '14+ km Perimeter & Civil Package · ISO Certified',
     category: 'Pipeline Works & Special Structures',
     description:
-      'Delivered 48 lattice transmission tower deep concrete foundations, perimeter security barrier walls, and switchyard transformer plinth structures.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.towerSafetyPerimeter,
+      'Execution of civil infrastructure, high-voltage electrical substation facilities, continuous reinforced concrete grade beams, high-security 358 anti-climb perimeter fencing, and structural foundations at the Al Mazuinah Project.',
+    fullDetails:
+      'At the Al Mazuinah Project in Dhofar Governorate, Al Sahab Al Rashid Trad. & Cont. Co L.L.C executed critical civil infrastructure, high-voltage electrical substation packages, industrial foundations, and high-security perimeter works. Our teams delivered continuous reinforced concrete grade beams with elastomeric bitumen damp-proofing, high-security 358 anti-climb mesh fencing, switchgear and control building civil structures, heavy rebar foundation cages, transmission tower foundations, internal asphalt access roads, and desert earthworks under demanding logistical conditions.',
+    imageUrl: '/assets/aistudio/al_mazuinah_panoramic_substation_aerial.webp',
+    sitePhotos: [
+      {
+        id: 'al-mazuinah-real-1',
+        title: 'Al Mazuinah High-Voltage Substation & Industrial Complex — Panoramic Aerial View',
+        caption: 'Elevated high-angle panoramic photograph showing the completed electrical substation, switchgear buildings, security boundary wall, and high-voltage transmission lines in Al Mazuinah, Dhofar.',
+        imageUrl: '/assets/aistudio/al_mazuinah_panoramic_substation_aerial.webp',
+      },
+      {
+        id: 'al-mazuinah-real-2',
+        title: 'Substation Control Buildings, Internal Asphalt Roads & Water Storage Units',
+        caption: 'Actual on-site photograph showing the central switchgear building, internal road network, water storage modular tanks, and perimeter security fencing.',
+        imageUrl: '/assets/aistudio/al_mazuinah_substation_buildings_roads.webp',
+      },
+      {
+        id: 'al-mazuinah-real-3',
+        title: 'Main Access Avenue & Desert High-Voltage Transmission Corridor',
+        caption: 'Elevated perspective of the main access road, electrical equipment yards, perimeter grade beams, and transmission tower lines extending across the desert.',
+        imageUrl: '/assets/aistudio/al_mazuinah_entrance_avenue_towers.webp',
+      },
+      {
+        id: 'al-mazuinah-4',
+        title: 'High-Security 358 Anti-Climb Fence & Reinforced Concrete Grade Beam',
+        caption: 'Completed high-security 358 anti-climb mesh fencing mounted on continuous reinforced concrete grade beam.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.antiClimbFencingGradeBeam,
+      },
+      {
+        id: 'al-mazuinah-5',
+        title: 'Continuous Concrete Grade Beam & Bitumen Waterproofing Trench',
+        caption: 'Excavated perimeter trench with shuttering formwork and elastomeric bitumen damp-proof coating.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.securityFencingBitumenTrench,
+      },
+      {
+        id: 'al-mazuinah-6',
+        title: 'Skilled Steel Fixers Tying Heavy Foundation Rebar Cages',
+        caption: 'ASAR steel fixing team assembling heavy reinforcement cages for deep structural foundations.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.towerFoundationFixers,
+      },
+      {
+        id: 'al-mazuinah-7',
+        title: 'Pre-Engineered Steel Truss Industrial Facility',
+        caption: 'Clear-span structural steel truss warehouse and logistics facility erection.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.steelTrussPreEngineered,
+      },
+    ],
     authorId: 'system_seed',
   },
   {
-    id: 'comp-4',
-    title: 'Duqm Petrochemical Storage Tank Farm Bund & Embankment Works',
-    client: 'Oman Oil & Petrochemical Logistics SAOC',
-    location: 'Port of Duqm SEZAD',
+    id: 'comp-courtyard-nizwa',
+    title: '4-Star Resort Hotel (Courtyard by Marriott) - Nizwa',
+    client: 'Nizwa Tourist Company LLC (شركة نزوى للسياحة ش.م.م)',
+    location: 'Nizwa, Ad Dakhiliyah Governorate',
     completionYear: '2024',
-    contractValue: '12 Tanks · 420 Manpower Deployed',
-    category: 'Pipeline & Tanks',
+    contractValue: 'Turnkey Hospitality EPC · Courtyard by Marriott',
+    category: 'Civil Works',
     description:
-      'Engineered reinforced concrete ring-beam bases, heavy containment earthen bund walls, perimeter scaffolding support, and anti-corrosive pipeline racks.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.tankFarmScaffoldingBund,
+      'Turnkey civil, structural, and infrastructure construction for the prestigious 4-Star Resort Hotel (Courtyard by Marriott) in Nizwa, featuring multi-story guest room wings, grand entrance courtyard with water feature, swimming pool, sports courts, and parking facilities.',
+    fullDetails:
+      'Al Sahab Al Rashid Trad. & Cont. Co L.L.C executed major civil, structural concrete, and infrastructure packages for the Proposed 4-Star Resort Hotel (operating under the international Courtyard by Marriott brand) located in Nizwa, Ad Dakhiliyah Governorate, Sultanate of Oman. The landmark hospitality project was commissioned by Nizwa Tourist Company LLC under comprehensive engineering consultancy and supervision by Amjaad Engineering Consultancy (Project Code: 21902).\n\nScope of Works Executed by ASAR:\n• Multi-story reinforced concrete hotel superstructures, guest room blocks, and administrative facilities.\n• Grand arrival boulevard and porte-cochère entrance with architectural water fountain and reflecting pools.\n• Resort leisure amenities including reinforced concrete swimming pools, sun deck pavilions, and outdoor sports courts.\n• Comprehensive underground utility networks, electrical substations, water storage tanks, and stormwater drainage.\n• Surface parking plazas, asphalt circulation roads, perimeter boundary walls, and exterior facade finishes harmonized with Nizwa’s heritage architecture.\n• Strict adherence to international Marriott hospitality brand standards, local civil defense permits, and Oman Ministry of Heritage and Tourism regulations.',
+    imageUrl: '/assets/aistudio/resort_hotel_nizwa_cover.webp',
+    sitePhotos: [
+      {
+        id: 'resort-nizwa-1',
+        title: 'Courtyard by Marriott Nizwa — Main Entrance & Water Plaza',
+        caption: 'Architectural facade, vehicle drop-off plaza, reflecting water fountain, and main hotel lobby entrance.',
+        imageUrl: '/assets/aistudio/resort_hotel_nizwa_view1_entrance.webp',
+      },
+      {
+        id: 'resort-nizwa-2',
+        title: 'Resort Approach Boulevard & Mountain Backdrop',
+        caption: 'Palm tree-lined driveway, modern guest room wings, and natural mountainous terrain of Nizwa.',
+        imageUrl: '/assets/aistudio/resort_hotel_nizwa_view2_driveway.webp',
+      },
+      {
+        id: 'resort-nizwa-3',
+        title: 'Internal Courtyard, Swimming Pool & Sports Courts',
+        caption: 'Recreational hub featuring swimming pool, sun terraces, shaded pergolas, and tennis court.',
+        imageUrl: '/assets/aistudio/resort_hotel_nizwa_view3_pool.webp',
+      },
+      {
+        id: 'resort-nizwa-4',
+        title: 'High Aerial 3D Masterplan Perspective',
+        caption: 'Bird’s eye perspective showing the entire resort hotel complex, parking, service blocks, and desert mountain vistas.',
+        imageUrl: '/assets/aistudio/resort_hotel_nizwa_view4_aerial.webp',
+      },
+      {
+        id: 'resort-nizwa-5',
+        title: 'Approved Architectural & Engineering Drawing Sheet',
+        caption: 'Official approved drawing sheet stamped by Amjaad Engineering Consultancy and Nizwa Tourist Co LLC (Project Code: 21902).',
+        imageUrl: '/assets/aistudio/resort_hotel_nizwa_master_sheet.webp',
+      },
+      {
+        id: 'resort-nizwa-6',
+        title: 'Reinforced Concrete Structural Superstructure Skeleton',
+        caption: 'Multi-story concrete column casting, slab formwork, and structural framing executed by ASAR civil trades.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.buildingSuperstructureSkeleton,
+      },
+    ],
     authorId: 'system_seed',
   },
   {
-    id: 'comp-5',
-    title: 'Industrial Freezone Perimeter Security Boundary Wall & Fencing',
-    client: 'Sohar Freezone Port Logistics',
-    location: 'Sohar Industrial Gateway',
+    id: 'comp-al-shorouk',
+    title: 'Al Shorouk Township (562 Residential Units) - Salalah',
+    client: 'Aldahab Estate Real Estate Company (شركة الذهب العقارية)',
+    location: 'North Sahnout, Salalah, Dhofar Governorate',
     completionYear: '2025',
-    contractValue: '14.2 km Perimeter · High-Security',
-    category: 'Special Structures',
+    contractValue: '324,271 m² Masterplan · 562 Units Handover',
+    category: 'Earth Works & Infrastructure',
     description:
-      'Completed 14.2 km of reinforced masonry boundary wall, plaster finish, heavy chain-link security mesh, and asphalt access road curbing.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.securityBoundaryMasonryRoad,
-    authorId: 'system_seed',
-  },
-  {
-    id: 'comp-6',
-    title: 'Pre-Engineered Structural Steel Logistics Warehouse & Cranes',
-    client: 'Oman Global Logistics Group',
-    location: 'Rusayl Industrial Estate',
-    completionYear: '2025',
-    contractValue: '22,000 m² Clear Span · Turnkey Handover',
-    category: 'Mechanical & Electrical Works',
-    description:
-      'Fabricated and erected 22,000 m² clear-span pre-engineered steel truss warehouse, 10-ton overhead crane runways, and insulated sandwich panel envelope.',
-    imageUrl: AUTHENTIC_USER_PHOTOS.steelTrussPreEngineered,
+      'Master layout civil engineering, site grading, arterial road networks, and wadi reservation protection for the 324,271 m² Al Shorouk Township (562 villas and townhouses) in North Sahnout, Salalah.',
+    fullDetails:
+      'Al Sahab Al Rashid Trad. & Cont. Co L.L.C executed master earthworks, infrastructure grading, wadi flood protection embankments, and road corridor civil packages for the Al Shorouk Township masterplan in North Sahnout, Salalah, Dhofar Governorate (Plot No: 737, Total Land Area: 324,271 m²). Developed for Aldahab Estate Real Estate Company under engineering consultancy by Meridian Engineering Consultancy (CR: 1316305).\n\nResidential Units & Phase Breakdown (562 Units Total):\n• 122 Luxury 7-Bedroom Villas (Phase 1: 38, Phase 2: 32, Phase 3: 37, Future: 15)\n• 15 6-Bedroom Villas (Phase 1: 3, Phase 2: 5, Phase 3: 7)\n• 228 5-Bedroom Villas (Phase 1: 42, Phase 2: 58, Phase 3: 78, Future: 50)\n• 44 4-Bedroom Twin Villas (Phase 1: 8, Phase 2: 14, Phase 3: 22)\n• 120 4-Bedroom Townhouses (Phase 1: 35, Phase 2: 51, Phase 3: 34)\n• 36 3-Bedroom Townhouses (Phase 1: 11, Phase 2: 10, Phase 3: 15)\n\nInfrastructure Scope Executed by ASAR:\n• Bulk excavation, precision formation levelling, and compaction across 324,271 m² of master development land.\n• 60-meter right-of-way (R.O.W) major arterial avenues and secondary residential access networks.\n• Wadi reservation flood mitigation corridor, including heavy rip-rap stone pitching and stormwater channels.\n• Deep utility trenching for potable water, power distribution conduits, and telecommunication duct banks.\n• Municipal boundary monuments, entrance gateways, and public park area grading.',
+    imageUrl: '/assets/aistudio/al_shorouk_township_cover.webp',
+    sitePhotos: [
+      {
+        id: 'shorouk-salalah-1',
+        title: 'Al Shorouk Township General Master Plan Layout Plan',
+        caption: 'Approved master plan showing residential sectors, 60m arterial avenues, central parks, and community facilities in North Sahnout.',
+        imageUrl: '/assets/aistudio/al_shorouk_township_master_plan.webp',
+      },
+      {
+        id: 'shorouk-salalah-2',
+        title: '562 Residential Units Schedule & Phase Delivery Breakdown',
+        caption: 'Official unit table schedule documenting 122 7-bed villas, 228 5-bed villas, 120 townhouses, and 44 twin villas across Phases 1-3.',
+        imageUrl: '/assets/aistudio/al_shorouk_township_units_table.webp',
+      },
+      {
+        id: 'shorouk-salalah-3',
+        title: 'Official Consultant & Client Approval Stamp',
+        caption: 'Formal engineering approval seal by Meridian Engineering Consultancy (CR: 1316305) and Aldahab Estate Real Estate Company.',
+        imageUrl: '/assets/aistudio/al_shorouk_township_approval_stamp.webp',
+      },
+      {
+        id: 'shorouk-salalah-4',
+        title: 'Complete Approved Master Plan Sheet (Plot No: 737)',
+        caption: 'Full master layout approval drawing sheet showing 324,271 m² plot boundary, 60m arterial roads, and wadi reservations.',
+        imageUrl: '/assets/aistudio/al_shorouk_township_full_sheet.webp',
+      },
+      {
+        id: 'shorouk-salalah-5',
+        title: 'Heavy Excavators Opening Deep Infrastructure Trenches',
+        caption: 'Tracked excavators and compaction machinery preparing arterial road formations and deep utility networks.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.excavatorFoundation,
+      },
+      {
+        id: 'shorouk-salalah-6',
+        title: 'Wadi Flood Reservation & Engineered Stone Pitching',
+        caption: 'Erosion-resistant rip-rap stone masonry and concrete drainage channels securing the township wadi boundary.',
+        imageUrl: AUTHENTIC_USER_PHOTOS.riprapStonePitching,
+      },
+    ],
     authorId: 'system_seed',
   },
 ];

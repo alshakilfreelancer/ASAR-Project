@@ -48,6 +48,8 @@ import {
   AlignRight,
   Palette,
   Layers,
+  Image as ImageIcon,
+  ArrowRight,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -76,6 +78,7 @@ import {
   CoreServiceItem,
   RunningProjectItem,
   GalleryPhotoItem,
+  SiteGalleryPhotoItem,
   CompletedProjectItem,
   ClientInquiryItem,
   KpiCardItem,
@@ -126,7 +129,7 @@ import {
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
 // Deployment & Content Version Sync: Ensures EVERY visitor on mobile & desktop sees the newest updates immediately
-const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v10_20261023';
+const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v16_20261024';
 
 function enforceLatestBuildVersion(): void {
   if (typeof window === 'undefined') return;
@@ -276,6 +279,67 @@ function sanitizeLoadedList<T extends { imageUrl: string }>(
   });
 }
 
+// Normalizes Completed Portfolio list so legacy placeholder IDs (comp-1..comp-6) are replaced by the 4 official Oman project sites
+// and guarantees each site has its fullDetails and initial sitePhotos populated.
+function normalizeCompletedProjectsList(
+  items: CompletedProjectItem[],
+  defaults: CompletedProjectItem[] = DEFAULT_COMPLETED_PROJECTS
+): CompletedProjectItem[] {
+  const legacyPlaceholderIds = new Set(['comp-1', 'comp-2', 'comp-3', 'comp-4', 'comp-5', 'comp-6']);
+  const validItems = Array.isArray(items)
+    ? items.filter((item) => item && item.id && !legacyPlaceholderIds.has(item.id))
+    : [];
+
+  if (validItems.length === 0) {
+    return defaults;
+  }
+
+  const byId = new Map<string, CompletedProjectItem>();
+  validItems.forEach((item) => byId.set(item.id, item));
+
+  // Ensure the 4 core sites are always present in order, merging any saved edits
+  const mergedCore = defaults.map((defItem) => {
+    const existing = byId.get(defItem.id);
+    if (!existing) return defItem;
+    byId.delete(defItem.id);
+    const img = (existing.imageUrl || '').trim();
+    return {
+      ...defItem,
+      ...existing,
+      imageUrl: !img || img === 'undefined' || img === 'null' ? defItem.imageUrl : existing.imageUrl,
+      fullDetails: existing.fullDetails || defItem.fullDetails,
+      sitePhotos:
+        Array.isArray(existing.sitePhotos) && existing.sitePhotos.length > 0
+          ? existing.sitePhotos
+          : defItem.sitePhotos || [],
+    };
+  });
+
+  // Append any additional custom completed projects added by the admin
+  const customAdded = Array.from(byId.values()).map((item, idx) => {
+    const fallback = defaults[idx % defaults.length];
+    const img = (item.imageUrl || '').trim();
+    return {
+      ...item,
+      imageUrl: !img || img === 'undefined' || img === 'null' ? fallback.imageUrl : item.imageUrl,
+      fullDetails: item.fullDetails || item.description,
+      sitePhotos:
+        Array.isArray(item.sitePhotos) && item.sitePhotos.length > 0
+          ? item.sitePhotos
+          : [
+              {
+                id: `${item.id}-p1`,
+                title: `${item.title} — Site Execution`,
+                caption: item.description,
+                imageUrl: !img || img === 'undefined' || img === 'null' ? fallback.imageUrl : item.imageUrl,
+              },
+            ],
+    };
+  });
+
+  return [...mergedCore, ...customAdded];
+}
+
 function saveToStorage<T>(key: string, value: T): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -381,7 +445,10 @@ export default function App() {
     sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY_PHOTOS), DEFAULT_GALLERY_PHOTOS)
   );
   const [completedProjects, setCompletedProjects] = useState<CompletedProjectItem[]>(() =>
-    sanitizeLoadedList(loadFromStorage(STORAGE_KEYS.COMPLETED, DEFAULT_COMPLETED_PROJECTS), DEFAULT_COMPLETED_PROJECTS)
+    normalizeCompletedProjectsList(
+      loadFromStorage(STORAGE_KEYS.COMPLETED, DEFAULT_COMPLETED_PROJECTS),
+      DEFAULT_COMPLETED_PROJECTS
+    )
   );
   const [kpiCards, setKpiCards] = useState<KpiCardItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.KPIS, DEFAULT_KPI_CARDS)
@@ -463,6 +530,14 @@ export default function App() {
   const [mapViewMode, setMapViewMode] = useState<'roadmap' | 'satellite' | 'schematic'>('roadmap');
   const [selectedManpowerGroup, setSelectedManpowerGroup] = useState<string>('ALL');
   const [selectedRunningProject, setSelectedRunningProject] = useState<RunningProjectItem | null>(null);
+  const [selectedCompletedProjectId, setSelectedCompletedProjectId] = useState<string | null>(null);
+  const [showAddSitePhotoForm, setShowAddSitePhotoForm] = useState<boolean>(false);
+  const [newSitePhoto, setNewSitePhoto] = useState<{ title: string; caption: string; imageUrl: string }>({
+    title: '',
+    caption: '',
+    imageUrl: DEFAULT_COMPLETED_PROJECTS[0].imageUrl,
+  });
+  const [isUploadingSitePhoto, setIsUploadingSitePhoto] = useState<boolean>(false);
 
   // Carousel & Gallery State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -1324,12 +1399,13 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
       query(collection(db, 'completedProjects'), limit(100)),
       (snap) => {
         if (!snap.empty) {
-          const items = snap.docs.map((d) => ({
+          const rawItems = snap.docs.map((d) => ({
             ...(d.data() as Omit<CompletedProjectItem, 'id'>),
             id: d.id,
           }));
-          setCompletedProjects(items);
-          saveToStorage(STORAGE_KEYS.COMPLETED, items);
+          const normalized = normalizeCompletedProjectsList(rawItems, DEFAULT_COMPLETED_PROJECTS);
+          setCompletedProjects(normalized);
+          saveToStorage(STORAGE_KEYS.COMPLETED, normalized);
         }
       },
       (err) => {
@@ -2008,9 +2084,21 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     }
   };
 
-  // Save a single Completed Project card
+  // Save a single Completed Project card (plus its extended interior writeup)
   const saveSingleCompletedProject = async (comp: CompletedProjectItem) => {
     saveToStorage(STORAGE_KEYS.COMPLETED, completedProjects);
+    const detailKey = `comp-detail-${comp.id}`;
+    if (comp.fullDetails && comp.fullDetails.trim()) {
+      void saveTextOverride({
+        elementId: detailKey,
+        textValue: comp.fullDetails.trim(),
+        textColor: '',
+        fontSize: '',
+        bgColor: '',
+        hidden: false,
+        authorId: cloudAuthorId,
+      });
+    }
     if (!canWriteCloud) {
       showNotification('success', `Saved portfolio project "${comp.title}".`, comp.id);
       return;
@@ -2034,6 +2122,182 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `completedProjects/${cleanId}`);
     }
+  };
+
+  // Resolve full detailed writeup for a Completed Portfolio site
+  const getCompletedProjectFullDetails = (comp: CompletedProjectItem): string => {
+    const detailKey = `comp-detail-${comp.id}`;
+    if (textOverrides[detailKey]?.textValue) {
+      return textOverrides[detailKey].textValue;
+    }
+    if (comp.fullDetails && comp.fullDetails.trim()) {
+      return comp.fullDetails;
+    }
+    const defMatch = DEFAULT_COMPLETED_PROJECTS.find((d) => d.id === comp.id);
+    return defMatch?.fullDetails || comp.description;
+  };
+
+  // Resolve the dedicated Photo Gallery for a specific Completed Portfolio site
+  // Combines custom blocks stored under sectionId = `sitegal-${comp.id}` with default/local sitePhotos
+  const getSiteGalleryPhotos = (comp: CompletedProjectItem): SiteGalleryPhotoItem[] => {
+    const sectionTag = `sitegal-${comp.id}`;
+    const cloudSiteBlocks = customBlocks.filter((b) => b.sectionId === sectionTag);
+    if (cloudSiteBlocks.length > 0) {
+      return cloudSiteBlocks.map((b) => ({
+        id: b.id,
+        title: b.heading,
+        caption: b.body,
+        imageUrl: b.imageUrl || comp.imageUrl,
+      }));
+    }
+    if (Array.isArray(comp.sitePhotos) && comp.sitePhotos.length > 0) {
+      return comp.sitePhotos;
+    }
+    const defMatch = DEFAULT_COMPLETED_PROJECTS.find((d) => d.id === comp.id);
+    if (defMatch?.sitePhotos && defMatch.sitePhotos.length > 0) {
+      return defMatch.sitePhotos;
+    }
+    return [
+      {
+        id: `${comp.id}-cover`,
+        title: `${comp.title} — Main Site View`,
+        caption: comp.description,
+        imageUrl: comp.imageUrl,
+      },
+    ];
+  };
+
+  // Persist a site's updated photo gallery to LocalStorage + Firestore `customBlocks` (`sectionId: sitegal-${comp.id}`)
+  const saveSiteGalleryPhotos = async (comp: CompletedProjectItem, updatedPhotos: SiteGalleryPhotoItem[]) => {
+    const sectionTag = `sitegal-${comp.id}`;
+    // 1. Update completedProjects state & localStorage
+    setCompletedProjects((prev) => {
+      const next = prev.map((c) => (c.id === comp.id ? { ...c, sitePhotos: updatedPhotos } : c));
+      saveToStorage(STORAGE_KEYS.COMPLETED, next);
+      return next;
+    });
+
+    // 2. Mirror into customBlocks with sectionId = `sitegal-${comp.id}` for real-time Cloud Firestore persistence
+    const existingCloudBlocks = customBlocks.filter((b) => b.sectionId === sectionTag);
+    const otherBlocks = customBlocks.filter((b) => b.sectionId !== sectionTag);
+    const newSiteBlocks: CustomBlockItem[] = updatedPhotos.map((p, idx) => ({
+      id: p.id.startsWith('sitephoto-') ? p.id : `sitephoto-${comp.id}-${idx + 1}`,
+      sectionId: sectionTag,
+      heading: sanitizeString(p.title, 1, 200, `${comp.title} Site Photo`),
+      body: sanitizeString(p.caption, 1, 2000, `Site execution photograph at ${comp.location}.`),
+      imageUrl: sanitizeString(p.imageUrl, 5, 350000, comp.imageUrl),
+      bgColor: '#ffffff',
+      textColor: '#1e3a8a',
+      authorId: cloudAuthorId,
+    }));
+
+    const nextAllBlocks = [...otherBlocks, ...newSiteBlocks];
+    setCustomBlocks(nextAllBlocks);
+    saveToStorage(STORAGE_KEYS.CUSTOM_BLOCKS, nextAllBlocks);
+
+    if (canWriteCloud) {
+      try {
+        const nextIds = new Set(newSiteBlocks.map((b) => b.id));
+        for (const oldBlock of existingCloudBlocks) {
+          if (!nextIds.has(oldBlock.id)) {
+            await deleteDoc(doc(db, 'customBlocks', oldBlock.id));
+          }
+        }
+        for (const block of newSiteBlocks) {
+          await setDoc(doc(db, 'customBlocks', block.id), {
+            sectionId: block.sectionId,
+            heading: block.heading,
+            body: block.body,
+            imageUrl: block.imageUrl,
+            bgColor: block.bgColor,
+            textColor: block.textColor,
+            authorId: cloudAuthorId,
+            updatedAt: serverTimestamp(),
+          });
+        }
+        void pushCmsUpdateToGitHub(`Update Site Gallery for ${comp.title}`);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `customBlocks/${sectionTag}`);
+      }
+    }
+  };
+
+  // Add a new photo directly to a Completed Portfolio site's gallery
+  const handleAddPhotoToSiteGallery = async (e: React.FormEvent, comp: CompletedProjectItem) => {
+    e.preventDefault();
+    if (!isAdminMode) {
+      setShowAdminLoginModal(true);
+      return;
+    }
+    const currentPhotos = getSiteGalleryPhotos(comp);
+    const newPhotoItem: SiteGalleryPhotoItem = {
+      id: `sitephoto-${comp.id}-${Date.now()}`,
+      title: sanitizeString(newSitePhoto.title, 2, 160, `${comp.title} — Site Work Photo #${currentPhotos.length + 1}`),
+      caption: sanitizeString(
+        newSitePhoto.caption,
+        3,
+        600,
+        `On-site engineering and construction execution at ${comp.title} (${comp.location}).`
+      ),
+      imageUrl: sanitizeString(newSitePhoto.imageUrl, 5, 350000, comp.imageUrl),
+    };
+    const updated = [newPhotoItem, ...currentPhotos];
+    await saveSiteGalleryPhotos(comp, updated);
+    setShowAddSitePhotoForm(false);
+    setNewSitePhoto({
+      title: '',
+      caption: '',
+      imageUrl: comp.imageUrl,
+    });
+    showNotification('success', `✓ Added new photo "${newPhotoItem.title}" to ${comp.title} gallery!`, comp.id);
+  };
+
+  // Delete a photo from a Completed Portfolio site's gallery
+  const handleDeletePhotoFromSiteGallery = async (comp: CompletedProjectItem, photoId: string) => {
+    if (!isAdminMode) {
+      setShowAdminLoginModal(true);
+      return;
+    }
+    const currentPhotos = getSiteGalleryPhotos(comp);
+    if (currentPhotos.length <= 1) {
+      showNotification('info', 'Each project site gallery must keep at least 1 photograph.');
+      return;
+    }
+    const updated = currentPhotos.filter((p) => p.id !== photoId);
+    await saveSiteGalleryPhotos(comp, updated);
+    showNotification('info', `Photo removed from ${comp.title} gallery.`);
+  };
+
+  // Handle file upload from device inside a Completed Portfolio site's Add Photo form
+  const handleSitePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSitePhoto(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 1100;
+        const scale = img.width > maxW ? maxW / img.width : 1;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+          setNewSitePhoto((prev) => ({ ...prev, imageUrl: compressedDataUrl }));
+          showNotification('success', 'Site photograph optimized & ready to add!');
+        }
+        setIsUploadingSitePhoto(false);
+      };
+      img.onerror = () => {
+        setIsUploadingSitePhoto(false);
+        showNotification('error', 'Could not process image file.');
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   // Seed or Sync all collections to Cloud Database + Supabase + GitHub
@@ -5219,199 +5483,268 @@ function doPost(e) {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredCompletedProjects.map((item, idx) => (
-                <article
-                  key={item.id}
-                  className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="relative aspect-16/9 bg-slate-100 border-b border-slate-200 overflow-hidden">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        referrerPolicy="no-referrer"
-                        onClick={() => {
-                          if (isAdminMode) {
-                            openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
-                              const updated = { ...item, imageUrl: newUrl };
-                              setCompletedProjects((prev) =>
-                                prev.map((c) => (c.id === item.id ? updated : c))
-                              );
-                              saveSingleCompletedProject(updated);
-                            });
-                          }
-                        }}
-                        onError={(e) => {
-                          handleImageError(e, item.category || 'Civil Works', item.title, item.location || 'Muscat, Oman');
-                        }}
-                        className={`w-full h-full object-cover ${isAdminMode ? 'cursor-pointer' : ''}`}
-                      />
-                      {isAdminMode && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
+              {filteredCompletedProjects.map((item, idx) => {
+                const sitePhotoCount = getSiteGalleryPhotos(item).length;
+                return (
+                  <article
+                    key={item.id}
+                    onClick={() => {
+                      if (!isAdminMode) {
+                        setSelectedCompletedProjectId(item.id);
+                        setShowAddSitePhotoForm(false);
+                      }
+                    }}
+                    className={`bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between transition-all ${
+                      !isAdminMode
+                        ? 'cursor-pointer hover:border-[#1e3a8a] hover:shadow-lg group'
+                        : ''
+                    }`}
+                  >
+                    <div>
+                      <div className="relative aspect-16/9 bg-slate-100 border-b border-slate-200 overflow-hidden">
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          referrerPolicy="no-referrer"
+                          onClick={(e) => {
+                            if (isAdminMode) {
+                              e.stopPropagation();
                               openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
                                 const updated = { ...item, imageUrl: newUrl };
                                 setCompletedProjects((prev) =>
                                   prev.map((c) => (c.id === item.id ? updated : c))
                                 );
                                 saveSingleCompletedProject(updated);
-                              })
+                              });
                             }
-                            className="px-2.5 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <Camera className="w-3.5 h-3.5" />
-                            <span>Change Photo</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCompletedProject(item.id)}
-                            className="p-1.5 bg-white/95 text-red-600 rounded-lg border border-slate-200 hover:bg-red-50 cursor-pointer shadow-xs"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-6 space-y-3">
-                      {isAdminMode ? (
-                        <div className="space-y-2 bg-white p-3.5 rounded-xl border border-orange-200">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#f97316]">
-                            <span>EDIT COMPLETED PROJECT</span>
-                            {confirmedBadgeId === item.id && (
-                              <span className="text-emerald-700">✓ Confirmed</span>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            value={item.title}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setCompletedProjects((prev) =>
-                                prev.map((c) => (c.id === item.id ? { ...c, title: val } : c))
-                              );
-                            }}
-                            placeholder="Project Title"
-                            className="w-full px-2.5 py-1.5 text-sm font-bold bg-slate-50 border border-slate-300 rounded"
-                          />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              value={item.client}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, client: val } : c))
-                                );
-                              }}
-                              placeholder="Client Name"
-                              className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                            />
-                            <input
-                              type="text"
-                              value={item.location}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, location: val } : c))
-                                );
-                              }}
-                              placeholder="Location"
-                              className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <input
-                              type="text"
-                              value={item.category}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, category: val } : c))
-                                );
-                              }}
-                              placeholder="Category"
-                              className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                            />
-                            <input
-                              type="text"
-                              value={item.completionYear}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, completionYear: val } : c))
-                                );
-                              }}
-                              placeholder="Year"
-                              className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
-                            />
-                            <input
-                              type="text"
-                              value={item.contractValue}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, contractValue: val } : c))
-                                );
-                              }}
-                              placeholder="Contract Value"
-                              className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
-                            />
-                          </div>
-                          <textarea
-                            rows={2}
-                            value={item.description}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setCompletedProjects((prev) =>
-                                prev.map((c) => (c.id === item.id ? { ...c, description: val } : c))
-                              );
-                            }}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => saveSingleCompletedProject(item)}
-                            className="w-full py-1.5 text-xs font-semibold text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                          }}
+                          onError={(e) => {
+                            handleImageError(e, item.category || 'Civil Works', item.title, item.location || 'Muscat, Oman');
+                          }}
+                          className={`w-full h-full object-cover transition-transform duration-300 ${
+                            isAdminMode ? 'cursor-pointer' : 'group-hover:scale-105'
+                          }`}
+                        />
+                        {/* Site Number & Photo Gallery Count Badge */}
+                        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+                          <span
+                            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-xs font-mono-tabular"
                             style={{ backgroundColor: siteConfig.primaryNavy }}
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Confirm & Save Portfolio Card</span>
-                          </button>
+                            SITE 0{idx + 1}
+                          </span>
+                          <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-900/80 text-white rounded-lg backdrop-blur-xs flex items-center gap-1">
+                            <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
+                            <span>{sitePhotoCount} Site Photos</span>
+                          </span>
                         </div>
-                      ) : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-500">
-                            <span className="font-semibold" style={{ color: siteConfig.primaryNavy }}>
-                              {item.category}
-                            </span>
-                            <span>·</span>
-                            <span>{item.location}</span>
-                            <span>·</span>
-                            <span className="font-semibold" style={{ color: siteConfig.accentOrange }}>
-                              Handover {item.completionYear}
-                            </span>
-                          </div>
-                          <h3 className="text-xl font-bold text-slate-900">{item.title}</h3>
-                          <p className="text-sm text-slate-600 leading-relaxed">{item.description}</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="font-medium text-slate-700">Client: {item.client}</span>
-                    <span
-                      className="font-mono-tabular font-semibold"
-                      style={{ color: siteConfig.primaryNavy }}
-                    >
-                      {item.contractValue}
-                    </span>
-                  </div>
-                </article>
-              ))}
+                        {isAdminMode && (
+                          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
+                                  const updated = { ...item, imageUrl: newUrl };
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? updated : c))
+                                  );
+                                  saveSingleCompletedProject(updated);
+                                });
+                              }}
+                              className="px-2.5 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>Change Cover</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCompletedProject(item.id);
+                              }}
+                              className="p-1.5 bg-white/95 text-red-600 rounded-lg border border-slate-200 hover:bg-red-50 cursor-pointer shadow-xs"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-6 space-y-3">
+                        {isAdminMode ? (
+                          <div
+                            className="space-y-2 bg-white p-3.5 rounded-xl border border-orange-200"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between text-[11px] font-bold text-[#f97316]">
+                              <span>EDIT COMPLETED PROJECT</span>
+                              {confirmedBadgeId === item.id && (
+                                <span className="text-emerald-700">✓ Confirmed</span>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={item.title}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCompletedProjects((prev) =>
+                                  prev.map((c) => (c.id === item.id ? { ...c, title: val } : c))
+                                );
+                              }}
+                              placeholder="Project Title"
+                              className="w-full px-2.5 py-1.5 text-sm font-bold bg-slate-50 border border-slate-300 rounded"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                value={item.client}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, client: val } : c))
+                                  );
+                                }}
+                                placeholder="Client Name"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                              <input
+                                type="text"
+                                value={item.location}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, location: val } : c))
+                                  );
+                                }}
+                                placeholder="Location"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <input
+                                type="text"
+                                value={item.category}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, category: val } : c))
+                                  );
+                                }}
+                                placeholder="Category"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                              <input
+                                type="text"
+                                value={item.completionYear}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, completionYear: val } : c))
+                                  );
+                                }}
+                                placeholder="Year"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                              />
+                              <input
+                                type="text"
+                                value={item.contractValue}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, contractValue: val } : c))
+                                  );
+                                }}
+                                placeholder="Contract Value"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                              />
+                            </div>
+                            <textarea
+                              rows={2}
+                              value={item.description}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCompletedProjects((prev) =>
+                                  prev.map((c) => (c.id === item.id ? { ...c, description: val } : c))
+                                );
+                              }}
+                              placeholder="Short front-page summary"
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
+                            />
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => saveSingleCompletedProject(item)}
+                                className="flex-1 py-1.5 px-3 text-xs font-semibold text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                                style={{ backgroundColor: siteConfig.primaryNavy }}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Save Card</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCompletedProjectId(item.id);
+                                  setShowAddSitePhotoForm(false);
+                                }}
+                                className="py-1.5 px-3 text-xs font-bold text-white bg-[#f97316] hover:bg-orange-600 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>Edit Site Details & Gallery ({sitePhotoCount})</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-500">
+                              <span className="font-semibold" style={{ color: siteConfig.primaryNavy }}>
+                                {item.category}
+                              </span>
+                              <span>·</span>
+                              <span>{item.location}</span>
+                              <span>·</span>
+                              <span className="font-semibold" style={{ color: siteConfig.accentOrange }}>
+                                Handover {item.completionYear}
+                              </span>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#1e3a8a] transition-colors">
+                              {item.title}
+                            </h3>
+                            <p className="text-sm text-slate-600 leading-relaxed">{item.description}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="space-y-0.5">
+                        <div className="font-medium text-slate-700">Client: {item.client}</div>
+                        <div
+                          className="font-mono-tabular font-semibold text-[11px]"
+                          style={{ color: siteConfig.primaryNavy }}
+                        >
+                          {item.contractValue}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCompletedProjectId(item.id);
+                          setShowAddSitePhotoForm(false);
+                        }}
+                        className="px-3.5 py-2 text-xs font-bold text-white rounded-xl flex items-center gap-1.5 shadow-xs hover:opacity-95 cursor-pointer transition-all"
+                        style={{ backgroundColor: siteConfig.primaryNavy }}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
+                        <span>View Site Details & Photo Gallery ({sitePhotoCount})</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
 
             {renderSectionCustomBlocks('portfolio')}
@@ -7242,7 +7575,7 @@ function doPost(e) {
       {/* MODAL 0: UNIVERSAL PHOTO REPLACER & UPLOADER MODAL */}
       {photoEditorTarget && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setPhotoEditorTarget(null)}
         >
           <div
@@ -7652,10 +7985,647 @@ function doPost(e) {
         </div>
       )}
 
+      {/* MODAL 1B: Completed Portfolio Site Interior Detail & Dedicated Site Photo Gallery Modal */}
+      {selectedCompletedProjectId && (() => {
+        const selectedSite = completedProjects.find((c) => c.id === selectedCompletedProjectId);
+        if (!selectedSite) return null;
+        const sitePhotos = getSiteGalleryPhotos(selectedSite);
+        const siteFullDetails = getCompletedProjectFullDetails(selectedSite);
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+            onClick={() => {
+              setSelectedCompletedProjectId(null);
+              setShowAddSitePhotoForm(false);
+            }}
+          >
+            <div
+              className="bg-white border border-slate-200 rounded-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top Site Switcher Bar & Modal Close */}
+              <div className="sticky top-0 z-20 bg-slate-900 text-white px-4 sm:px-6 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                  <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 mr-1 shrink-0">
+                    Portfolio Sites:
+                  </span>
+                  {completedProjects.map((site, sIdx) => {
+                    const isCurrent = site.id === selectedSite.id;
+                    return (
+                      <button
+                        key={site.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCompletedProjectId(site.id);
+                          setShowAddSitePhotoForm(false);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                          isCurrent
+                            ? 'bg-[#f97316] text-white shadow-xs'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                        }`}
+                      >
+                        {sIdx + 1}. {site.title}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCompletedProjectId(null);
+                    setShowAddSitePhotoForm(false);
+                  }}
+                  className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Close</span>
+                </button>
+              </div>
+
+              {/* Hero Banner with Cover Photo & Metadata */}
+              <div className="relative h-56 sm:h-72 bg-slate-900 border-b border-slate-200 overflow-hidden shrink-0">
+                <img
+                  src={selectedSite.imageUrl}
+                  alt={selectedSite.title}
+                  referrerPolicy="no-referrer"
+                  onError={(e) =>
+                    handleImageError(
+                      e,
+                      selectedSite.category || 'Civil Works',
+                      selectedSite.title,
+                      selectedSite.location || 'Oman'
+                    )
+                  }
+                  className="w-full h-full object-cover opacity-85"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/45 to-transparent" />
+                {isAdminMode && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openPhotoEditor(
+                        `Cover Photo: ${selectedSite.title}`,
+                        selectedSite.imageUrl,
+                        (newUrl) => {
+                          const updated = { ...selectedSite, imageUrl: newUrl };
+                          setCompletedProjects((prev) =>
+                            prev.map((c) => (c.id === selectedSite.id ? updated : c))
+                          );
+                          saveSingleCompletedProject(updated);
+                        }
+                      )
+                    }
+                    className="absolute top-4 right-4 px-3 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Change Site Cover Photo</span>
+                  </button>
+                )}
+                <div className="absolute bottom-0 inset-x-0 p-5 sm:p-7 text-white">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-orange-300 mb-1.5">
+                    <span className="px-2 py-0.5 rounded bg-[#f97316] text-white font-bold">
+                      {selectedSite.category}
+                    </span>
+                    <span>·</span>
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {selectedSite.location}
+                    </span>
+                    <span>·</span>
+                    <span>Handover: {selectedSite.completionYear}</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{selectedSite.title}</h2>
+                  <p className="text-xs sm:text-sm text-slate-200 mt-1">
+                    Client: <span className="font-semibold text-white">{selectedSite.client}</span> · Status:{' '}
+                    <span className="font-semibold text-emerald-300">{selectedSite.contractValue}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Interior Body: Detailed Writeup + Dedicated Site Photo Gallery */}
+              <div className="p-5 sm:p-8 space-y-8">
+                {/* Part 1: Comprehensive Site Scope & Engineering Writeup */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                    <div>
+                      <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-[#f97316] font-bold">
+                        PROJECT EXECUTION DOSSIER & DETAILED WRITEUP
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900">
+                        {selectedSite.title} — Detailed Scope of Works
+                      </h3>
+                    </div>
+                    {!isAdminMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isAdminAuthenticated) {
+                            setShowAdminLoginModal(true);
+                          } else {
+                            setIsAdminMode(true);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-[#f97316]" />
+                        <span>Admin Edit Text / Add Photos</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAdminMode ? (
+                    <div className="space-y-3 bg-white p-4 rounded-xl border border-orange-200">
+                      <div className="text-xs font-bold text-[#f97316] flex items-center justify-between">
+                        <span>EDIT SITE SUMMARY & FULL DETAILED WRITEUP</span>
+                        {confirmedBadgeId === selectedSite.id && (
+                          <span className="text-emerald-700">✓ Saved to Cloud</span>
+                        )}
+                      </div>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Front-Page Card Short Summary
+                        <textarea
+                          rows={2}
+                          value={selectedSite.description}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCompletedProjects((prev) =>
+                              prev.map((c) => (c.id === selectedSite.id ? { ...c, description: val } : c))
+                            );
+                          }}
+                          className="mt-1 w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Full Interior Site Details & Engineering Writeup (Shown inside this view)
+                        <textarea
+                          rows={6}
+                          value={siteFullDetails}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const detailKey = `comp-detail-${selectedSite.id}`;
+                            setTextOverrides((prev) => ({
+                              ...prev,
+                              [detailKey]: {
+                                elementId: detailKey,
+                                textValue: val,
+                                textColor: '',
+                                fontSize: '',
+                                bgColor: '',
+                                hidden: false,
+                                authorId: cloudAuthorId,
+                              },
+                            }));
+                            setCompletedProjects((prev) =>
+                              prev.map((c) => (c.id === selectedSite.id ? { ...c, fullDetails: val } : c))
+                            );
+                          }}
+                          className="mt-1 w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg leading-relaxed"
+                        />
+                      </label>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            saveSingleCompletedProject({
+                              ...selectedSite,
+                              fullDetails: siteFullDetails,
+                            })
+                          }
+                          className="px-4 py-2 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 cursor-pointer"
+                          style={{ backgroundColor: siteConfig.primaryNavy }}
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Save Site Writeup & Details</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-slate-800 leading-relaxed">
+                        {selectedSite.description}
+                      </p>
+                      <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line pt-2 border-t border-slate-200/80">
+                        {siteFullDetails}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Part 2: Dedicated Per-Site Photo Gallery with Add / Edit / Delete Photo Options */}
+                <div className="space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                    <div>
+                      <div className="text-xs font-mono-tabular uppercase tracking-widest text-[#f97316] font-bold">
+                        DEDICATED SITE PHOTO GALLERY · {sitePhotos.length} PHOTOS
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900">
+                        {selectedSite.title} — Site Photographs
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Click any photograph to view full-screen. Use &ldquo;+ Add Photo to This Site&rdquo; to upload or select new site photos.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isAdminMode) {
+                            if (!isAdminAuthenticated) {
+                              setShowAdminLoginModal(true);
+                            } else {
+                              setIsAdminMode(true);
+                              setShowAddSitePhotoForm(true);
+                              setNewSitePhoto({
+                                title: `${selectedSite.title} — Site Photo #${sitePhotos.length + 1}`,
+                                caption: `Site execution and engineering works at ${selectedSite.title} (${selectedSite.location}).`,
+                                imageUrl: selectedSite.imageUrl,
+                              });
+                            }
+                            return;
+                          }
+                          setShowAddSitePhotoForm((prev) => !prev);
+                          if (!showAddSitePhotoForm) {
+                            setNewSitePhoto({
+                              title: `${selectedSite.title} — Site Photo #${sitePhotos.length + 1}`,
+                              caption: `Site execution and engineering works at ${selectedSite.title} (${selectedSite.location}).`,
+                              imageUrl: selectedSite.imageUrl,
+                            });
+                          }
+                        }}
+                        className="px-4 py-2.5 text-xs font-bold text-white bg-[#f97316] hover:bg-orange-600 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>
+                          {showAddSitePhotoForm
+                            ? 'Close Add Photo Form'
+                            : '+ Add Photo to This Site'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Add New Photo to This Specific Site's Gallery Form */}
+                  {showAddSitePhotoForm && isAdminMode && (
+                    <form
+                      onSubmit={(e) => handleAddPhotoToSiteGallery(e, selectedSite)}
+                      className="p-5 bg-orange-50/70 border-2 border-[#f97316] rounded-2xl space-y-4"
+                    >
+                      <div className="flex items-center justify-between border-b border-orange-200 pb-2.5">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[#1e3a8a] flex items-center gap-1.5">
+                          <Camera className="w-4 h-4 text-[#f97316]" />
+                          <span>Add New Photograph to {selectedSite.title} Gallery</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddSitePhotoForm(false)}
+                          className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                        {/* Preview */}
+                        <div className="aspect-16/10 rounded-xl overflow-hidden bg-slate-100 border border-slate-300">
+                          <img
+                            src={newSitePhoto.imageUrl}
+                            alt="New site photo preview"
+                            referrerPolicy="no-referrer"
+                            onError={(e) =>
+                              handleImageError(e, selectedSite.category, selectedSite.title, selectedSite.location)
+                            }
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        {/* Title, Caption & Upload Controls */}
+                        <div className="md:col-span-2 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label className="block text-xs font-semibold text-slate-700">
+                              Photo Title *
+                              <input
+                                type="text"
+                                required
+                                value={newSitePhoto.title}
+                                onChange={(e) =>
+                                  setNewSitePhoto((prev) => ({ ...prev, title: e.target.value }))
+                                }
+                                placeholder={`${selectedSite.title} — Site Work`}
+                                className="mt-1 w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg"
+                              />
+                            </label>
+                            <label className="block text-xs font-semibold text-slate-700">
+                              Upload from Computer / Phone
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleSitePhotoFileUpload}
+                                className="mt-1 block w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#1e3a8a] file:text-white cursor-pointer"
+                              />
+                              {isUploadingSitePhoto && (
+                                <span className="text-[11px] text-[#f97316] font-semibold">
+                                  Optimizing photo...
+                                </span>
+                              )}
+                            </label>
+                          </div>
+
+                          <label className="block text-xs font-semibold text-slate-700">
+                            Photo Caption / Work Description
+                            <input
+                              type="text"
+                              value={newSitePhoto.caption}
+                              onChange={(e) =>
+                                setNewSitePhoto((prev) => ({ ...prev, caption: e.target.value }))
+                              }
+                              placeholder="Describe the engineering or site activity shown in this photo"
+                              className="mt-1 w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg"
+                            />
+                          </label>
+
+                          <label className="block text-xs font-semibold text-slate-700">
+                            Or Paste Direct Image URL
+                            <input
+                              type="text"
+                              value={newSitePhoto.imageUrl}
+                              onChange={(e) =>
+                                setNewSitePhoto((prev) => ({ ...prev, imageUrl: e.target.value }))
+                              }
+                              placeholder="https://example.com/site-photo.jpg"
+                              className="mt-1 w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono-tabular"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Quick Picker from 29 Authentic Oman Site Photos */}
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-bold text-slate-700">
+                          Or Click Any Company Site Photo Below to Select Instantly:
+                        </div>
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-h-36 overflow-y-auto p-2 bg-white rounded-xl border border-slate-200">
+                          {AUTHENTIC_PHOTO_BANK_ITEMS.map((bankItem) => {
+                            const isChosen = newSitePhoto.imageUrl === bankItem.url;
+                            return (
+                              <button
+                                key={bankItem.id}
+                                type="button"
+                                onClick={() =>
+                                  setNewSitePhoto((prev) => ({
+                                    ...prev,
+                                    imageUrl: bankItem.url,
+                                  }))
+                                }
+                                className={`relative aspect-4/3 rounded-lg overflow-hidden border-2 cursor-pointer ${
+                                  isChosen
+                                    ? 'border-[#f97316] ring-2 ring-[#f97316]/40 scale-95'
+                                    : 'border-slate-200 hover:border-[#1e3a8a]'
+                                }`}
+                              >
+                                <img
+                                  src={bankItem.url}
+                                  alt={bankItem.title}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover"
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddSitePhotoForm(false)}
+                          className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          style={{ backgroundColor: siteConfig.primaryNavy }}
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Save Photo to {selectedSite.title} Gallery</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Site Photo Gallery Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {sitePhotos.map((photo, pIdx) => (
+                      <div
+                        key={photo.id}
+                        className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between group hover:border-slate-300 transition-all"
+                      >
+                        <div>
+                          <div className="relative aspect-16/10 bg-slate-100 border-b border-slate-200 overflow-hidden">
+                            <img
+                              src={photo.imageUrl}
+                              alt={photo.title}
+                              referrerPolicy="no-referrer"
+                              onClick={() => {
+                                if (isAdminMode) {
+                                  openPhotoEditor(
+                                    `${selectedSite.title} Photo #${pIdx + 1}`,
+                                    photo.imageUrl,
+                                    (newUrl) => {
+                                      const updatedList = sitePhotos.map((p) =>
+                                        p.id === photo.id ? { ...p, imageUrl: newUrl } : p
+                                      );
+                                      void saveSiteGalleryPhotos(selectedSite, updatedList);
+                                    }
+                                  );
+                                } else {
+                                  setLightboxPhoto({
+                                    id: photo.id,
+                                    title: photo.title,
+                                    category: selectedSite.title,
+                                    location: selectedSite.location,
+                                    caption: photo.caption,
+                                    imageUrl: photo.imageUrl,
+                                    authorId: cloudAuthorId,
+                                  });
+                                }
+                              }}
+                              onError={(e) =>
+                                handleImageError(
+                                  e,
+                                  selectedSite.category,
+                                  photo.title,
+                                  selectedSite.location
+                                )
+                              }
+                              className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300"
+                            />
+                            <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-slate-900/75 text-white text-[10px] font-mono-tabular font-semibold">
+                              PHOTO #{pIdx + 1}
+                            </div>
+                            <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLightboxPhoto({
+                                    id: photo.id,
+                                    title: photo.title,
+                                    category: selectedSite.title,
+                                    location: selectedSite.location,
+                                    caption: photo.caption,
+                                    imageUrl: photo.imageUrl,
+                                    authorId: cloudAuthorId,
+                                  })
+                                }
+                                className="p-1.5 rounded-lg bg-white/90 hover:bg-white text-slate-800 shadow-xs cursor-pointer"
+                                title="View Fullscreen"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5" />
+                              </button>
+                              {isAdminMode && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openPhotoEditor(
+                                        `${selectedSite.title} Photo #${pIdx + 1}`,
+                                        photo.imageUrl,
+                                        (newUrl) => {
+                                          const updatedList = sitePhotos.map((p) =>
+                                            p.id === photo.id ? { ...p, imageUrl: newUrl } : p
+                                          );
+                                          void saveSiteGalleryPhotos(selectedSite, updatedList);
+                                        }
+                                      )
+                                    }
+                                    className="px-2 py-1 rounded-lg bg-[#f97316] text-white text-[11px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <Camera className="w-3 h-3" />
+                                    <span>Replace</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleDeletePhotoFromSiteGallery(selectedSite, photo.id)
+                                    }
+                                    className="p-1.5 rounded-lg bg-white/95 text-red-600 hover:bg-red-50 shadow-xs cursor-pointer"
+                                    title="Delete Photo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="p-4 space-y-2">
+                            {isAdminMode ? (
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={photo.title}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updatedList = sitePhotos.map((p) =>
+                                      p.id === photo.id ? { ...p, title: val } : p
+                                    );
+                                    setCompletedProjects((prev) =>
+                                      prev.map((c) =>
+                                        c.id === selectedSite.id ? { ...c, sitePhotos: updatedList } : c
+                                      )
+                                    );
+                                  }}
+                                  className="w-full px-2.5 py-1 text-xs font-bold bg-white border border-slate-300 rounded"
+                                  placeholder="Photo Title"
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={photo.caption}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updatedList = sitePhotos.map((p) =>
+                                      p.id === photo.id ? { ...p, caption: val } : p
+                                    );
+                                    setCompletedProjects((prev) =>
+                                      prev.map((c) =>
+                                        c.id === selectedSite.id ? { ...c, sitePhotos: updatedList } : c
+                                      )
+                                    );
+                                  }}
+                                  className="w-full px-2.5 py-1 text-xs bg-white border border-slate-300 rounded"
+                                  placeholder="Photo Caption"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void saveSiteGalleryPhotos(selectedSite, sitePhotos)}
+                                  className="w-full py-1.5 text-[11px] font-bold text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                                  style={{ backgroundColor: siteConfig.primaryNavy }}
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Save Photo Caption</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <h4 className="text-sm font-bold text-slate-900">{photo.title}</h4>
+                                <p className="text-xs text-slate-600 leading-relaxed">{photo.caption}</p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    Site Location: <span className="font-semibold text-slate-800">{selectedSite.location}</span> · Client:{' '}
+                    <span className="font-semibold text-slate-800">{selectedSite.client}</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const siteTitle = selectedSite.title;
+                        setSelectedCompletedProjectId(null);
+                        setInquiryForm((prev) => ({
+                          ...prev,
+                          message: `Requesting project reference / quotation similar to completed site: ${siteTitle}`,
+                        }));
+                        scrollToSection('contact');
+                      }}
+                      className="px-4 py-2 text-xs font-semibold text-white rounded-lg cursor-pointer"
+                      style={{ backgroundColor: siteConfig.primaryNavy }}
+                    >
+                      Inquire About This Project
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCompletedProjectId(null);
+                        setShowAddSitePhotoForm(false);
+                      }}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                    >
+                      Close Site View
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* MODAL 2: Gallery Lightbox Modal */}
       {lightboxPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setLightboxPhoto(null)}
         >
           <div
