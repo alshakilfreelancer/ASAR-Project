@@ -113,6 +113,9 @@ import {
   NETLIFY_REDIRECTS_TEMPLATE,
   downloadNetlifyTomlFile,
   downloadNetlifyRedirectsFile,
+  WorkSectionPhotoItem,
+  WorkSectionGalleryItem,
+  DEFAULT_WORK_SECTION_GALLERIES,
 } from './data/defaultData';
 import JSZip from 'jszip';
 import {
@@ -129,7 +132,7 @@ import {
 
 const ADMIN_EMAIL = 'alshakilfreelancer@gmail.com';
 // Deployment & Content Version Sync: Ensures EVERY visitor on mobile & desktop sees the newest updates immediately
-const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v16_20261024';
+const CURRENT_BUILD_VERSION = 'asar_deploy_sync_v17_20261024';
 
 function enforceLatestBuildVersion(): void {
   if (typeof window === 'undefined') return;
@@ -154,6 +157,7 @@ function enforceLatestBuildVersion(): void {
         'asar_cms_manpower_groups',
         'asar_cms_text_overrides',
         'asar_cms_custom_blocks',
+        'asar_cms_work_sections',
       ];
       for (let i = window.localStorage.length - 1; i >= 0; i--) {
         const k = window.localStorage.key(i);
@@ -176,6 +180,7 @@ const STORAGE_KEYS = {
   RUNNING: 'asar_cms_running_projects_v10',
   GALLERY: 'asar_cms_gallery_photos_v10',
   COMPLETED: 'asar_cms_completed_projects_v10',
+  WORK_SECTIONS: 'asar_cms_work_sections_v10',
   KPIS: 'asar_cms_kpi_cards_v10',
   VALUES: 'asar_cms_core_values_v10',
   MANPOWER: 'asar_cms_manpower_groups_v10',
@@ -340,6 +345,26 @@ function normalizeCompletedProjectsList(
   return [...mergedCore, ...customAdded];
 }
 
+function normalizeWorkSectionGalleries(
+  items: WorkSectionGalleryItem[],
+  defaults: WorkSectionGalleryItem[] = DEFAULT_WORK_SECTION_GALLERIES
+): WorkSectionGalleryItem[] {
+  if (!Array.isArray(items) || items.length === 0) return defaults;
+  return defaults.map((def) => {
+    const existing = items.find((it) => it.id === def.id);
+    if (!existing) return def;
+    return {
+      ...def,
+      ...existing,
+      coverImageUrl: existing.coverImageUrl || def.coverImageUrl,
+      photos:
+        Array.isArray(existing.photos) && existing.photos.length > 0
+          ? existing.photos
+          : def.photos,
+    };
+  });
+}
+
 function saveToStorage<T>(key: string, value: T): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -351,9 +376,9 @@ function saveToStorage<T>(key: string, value: T): void {
 const TABBAR_ITEMS = [
   { id: 'home', label: 'Home', summary: 'Executive overview, official Google Maps location & EPC metrics' },
   { id: 'services', label: 'Core Services & Work Types', summary: 'Civil, Earthworks, Manpower, MEP & Pipeline divisions' },
+  { id: 'portfolio', label: 'Completed Portfolio', summary: 'Delivered infrastructure & industrial contracts across Oman' },
   { id: 'running-projects', label: 'Running Project Sites', summary: 'Live ongoing construction sites & interactive scope modal' },
   { id: 'gallery', label: 'Photo Gallery & Slider', summary: 'Interactive site photo carousel & categorized work gallery' },
-  { id: 'portfolio', label: 'Completed Portfolio', summary: 'Delivered infrastructure & industrial contracts across Oman' },
   { id: 'about', label: 'About Us & Vision', summary: 'Corporate background, Aim, Vision, Mission & Core Values' },
   { id: 'contact', label: 'Contact & Inquiry', summary: 'Request skilled manpower deployment or turnkey project quote' },
   { id: 'developer', label: '👨‍💻 Developer', summary: 'Site Engineer & Developer: Eng. Abdullah Al Osman Shakil · Electrical Engineer' },
@@ -450,6 +475,12 @@ export default function App() {
       DEFAULT_COMPLETED_PROJECTS
     )
   );
+  const [workSectionGalleries, setWorkSectionGalleries] = useState<WorkSectionGalleryItem[]>(() =>
+    normalizeWorkSectionGalleries(
+      loadFromStorage(STORAGE_KEYS.WORK_SECTIONS, DEFAULT_WORK_SECTION_GALLERIES),
+      DEFAULT_WORK_SECTION_GALLERIES
+    )
+  );
   const [kpiCards, setKpiCards] = useState<KpiCardItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.KPIS, DEFAULT_KPI_CARDS)
   );
@@ -501,6 +532,10 @@ export default function App() {
   }, [completedProjects, isAdminMode, isAiStudioEnv]);
 
   useEffect(() => {
+    if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.WORK_SECTIONS, workSectionGalleries);
+  }, [workSectionGalleries, isAdminMode, isAiStudioEnv]);
+
+  useEffect(() => {
     if (isAdminMode || isAiStudioEnv) saveToStorage(STORAGE_KEYS.KPIS, kpiCards);
   }, [kpiCards, isAdminMode, isAiStudioEnv]);
 
@@ -547,6 +582,47 @@ export default function App() {
 
   // Completed Portfolio Filter
   const [portfolioFilter, setPortfolioFilter] = useState<string>('All');
+
+  // Work Section Photo Galleries Interactive State (Section-wise galleries)
+  const [selectedWorkSectionId, setSelectedWorkSectionId] = useState<string | null>(null);
+  const [workSectionFilter, setWorkSectionFilter] = useState<string>('All');
+  const [showAddWorkSectionPhotoForm, setShowAddWorkSectionPhotoForm] = useState<boolean>(false);
+  const [newWorkSectionPhotoUrl, setNewWorkSectionPhotoUrl] = useState<string>('');
+  const [isUploadingWorkSectionPhoto, setIsUploadingWorkSectionPhoto] = useState<boolean>(false);
+  const [activeSectionLightbox, setActiveSectionLightbox] = useState<{
+    sectionTitle: string;
+    photos: string[];
+    currentIndex: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeSectionLightbox) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveSectionLightbox(null);
+      } else if (e.key === 'ArrowLeft') {
+        setActiveSectionLightbox((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentIndex: (prev.currentIndex - 1 + prev.photos.length) % prev.photos.length,
+              }
+            : null
+        );
+      } else if (e.key === 'ArrowRight') {
+        setActiveSectionLightbox((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentIndex: (prev.currentIndex + 1) % prev.photos.length,
+              }
+            : null
+        );
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSectionLightbox]);
 
   // Admin Modals & Inline Forms
   const [showAddRunningForm, setShowAddRunningForm] = useState(false);
@@ -2307,6 +2383,7 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     saveToStorage(STORAGE_KEYS.RUNNING, runningProjects);
     saveToStorage(STORAGE_KEYS.GALLERY, galleryPhotos);
     saveToStorage(STORAGE_KEYS.COMPLETED, completedProjects);
+    saveToStorage(STORAGE_KEYS.WORK_SECTIONS, workSectionGalleries);
     saveToStorage(STORAGE_KEYS.KPIS, kpiCards);
     saveToStorage(STORAGE_KEYS.VALUES, coreValues);
     saveToStorage(STORAGE_KEYS.MANPOWER, manpowerGroups);
@@ -2381,6 +2458,8 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     setRunningProjects(DEFAULT_RUNNING_PROJECTS);
     setGalleryPhotos(DEFAULT_GALLERY_PHOTOS);
     setCompletedProjects(DEFAULT_COMPLETED_PROJECTS);
+    setWorkSectionGalleries(DEFAULT_WORK_SECTION_GALLERIES);
+    setSelectedWorkSectionId(null);
     setKpiCards(DEFAULT_KPI_CARDS);
     setCoreValues(DEFAULT_CORE_VALUES);
     setManpowerGroups(MANPOWER_TRADE_CATALOG);
@@ -2389,6 +2468,83 @@ export const PERMANENT_ADMIN_CMS_DATA = ${JSON.stringify(
     setSelectedElementId(null);
     Object.values(STORAGE_KEYS).forEach((k) => window.localStorage.removeItem(k));
     showNotification('info', 'Reset all headings, blocks, photos, and sections to default wwwasar.com content.');
+  };
+
+  // Work Section Photo Gallery Handlers
+  const handleAddPhotoToWorkSection = (sectionId: string, url: string) => {
+    if (!url || !url.trim()) return;
+    const newPhotoItem: WorkSectionPhotoItem = {
+      id: `sec-photo-${Date.now()}`,
+      imageUrl: url.trim(),
+    };
+    setWorkSectionGalleries((prev) => {
+      const next = prev.map((sec) =>
+        sec.id === sectionId ? { ...sec, photos: [newPhotoItem, ...sec.photos] } : sec
+      );
+      saveToStorage(STORAGE_KEYS.WORK_SECTIONS, next);
+      return next;
+    });
+    setNewWorkSectionPhotoUrl('');
+    setShowAddWorkSectionPhotoForm(false);
+    showNotification('success', 'Photograph successfully added to section gallery!');
+  };
+
+  const handleDeletePhotoFromWorkSection = (sectionId: string, photoId: string) => {
+    setWorkSectionGalleries((prev) => {
+      const next = prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        const remaining = sec.photos.filter((p) => p.id !== photoId);
+        return {
+          ...sec,
+          photos: remaining,
+          coverImageUrl: sec.coverImageUrl === sec.photos.find((p) => p.id === photoId)?.imageUrl && remaining.length > 0 ? remaining[0].imageUrl : sec.coverImageUrl,
+        };
+      });
+      saveToStorage(STORAGE_KEYS.WORK_SECTIONS, next);
+      return next;
+    });
+    showNotification('info', 'Photograph removed from section.');
+  };
+
+  const handleChangeWorkSectionCover = (sectionId: string, coverUrl: string) => {
+    setWorkSectionGalleries((prev) => {
+      const next = prev.map((sec) =>
+        sec.id === sectionId ? { ...sec, coverImageUrl: coverUrl } : sec
+      );
+      saveToStorage(STORAGE_KEYS.WORK_SECTIONS, next);
+      return next;
+    });
+    showNotification('success', 'Section cover photo updated!');
+  };
+
+  const handleWorkSectionFileUpload = (e: React.ChangeEvent<HTMLInputElement>, sectionId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingWorkSectionPhoto(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 1400;
+        const scale = img.width > maxW ? maxW / img.width : 1;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          handleAddPhotoToWorkSection(sectionId, compressedDataUrl);
+        }
+        setIsUploadingWorkSectionPhoto(false);
+      };
+      img.onerror = () => {
+        setIsUploadingWorkSectionPhoto(false);
+        showNotification('error', 'Could not process image file.');
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   // Add New Running Project Site
@@ -2979,6 +3135,15 @@ function doPost(e) {
   };
 
   // Filtered collections
+  const filteredWorkSections = useMemo(() => {
+    if (workSectionFilter === 'All') return workSectionGalleries;
+    const filterLower = workSectionFilter.toLowerCase();
+    return workSectionGalleries.filter((sec) =>
+      sec.category.toLowerCase().includes(filterLower) ||
+      sec.title.toLowerCase().includes(filterLower)
+    );
+  }, [workSectionGalleries, workSectionFilter]);
+
   const filteredGalleryPhotos = useMemo(() => {
     if (galleryCategoryFilter === 'All') return galleryPhotos;
     return galleryPhotos.filter((p) => p.category === galleryCategoryFilter);
@@ -3148,6 +3313,16 @@ function doPost(e) {
               {renderEditableElement('nav-services', 'Core Services', 'span')}
             </a>
             <a
+              href="#portfolio"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToSection('portfolio');
+              }}
+              className="hover:text-[#1e3a8a] hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            >
+              {renderEditableElement('nav-portfolio', 'Completed Portfolio', 'span')}
+            </a>
+            <a
               href="#running-projects"
               onClick={(e) => {
                 e.preventDefault();
@@ -3166,16 +3341,6 @@ function doPost(e) {
               className="hover:text-[#1e3a8a] hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               {renderEditableElement('nav-gallery', 'Photo Gallery', 'span')}
-            </a>
-            <a
-              href="#portfolio"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToSection('portfolio');
-              }}
-              className="hover:text-[#1e3a8a] hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              {renderEditableElement('nav-portfolio', 'Completed Portfolio', 'span')}
             </a>
             <a
               href="#about"
@@ -4196,217 +4361,447 @@ function doPost(e) {
               })}
             </div>
 
-            {/* Interactive Skilled & Unskilled Manpower Categorization Breakdown */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 lg:p-8 space-y-6">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-                <div className="space-y-1">
-                  {renderEditableElement(
-                    'manpower-kicker',
-                    'DIV-03 SPECIALTY MATRIX · SKILLED & UNSKILLED WORKFORCE SUPPLY',
-                    'div',
-                    'text-xs font-mono-tabular font-semibold',
-                    { color: siteConfig.accentOrange }
-                  )}
-                  {renderEditableElement(
-                    'manpower-heading',
-                    'Categorized Technical & Construction Manpower Roster',
-                    'h3',
-                    'text-xl sm:text-2xl font-bold',
-                    { color: siteConfig.primaryNavy }
-                  )}
-                  {renderEditableElement(
-                    'manpower-subtext',
-                    'Trade-tested, medically fit, and HSE-inducted workforce available for short-term shutdowns, long-term EPC secondment, or unit-rate subcontracts.',
-                    'p',
-                    'text-xs sm:text-sm text-slate-600'
-                  )}
-                </div>
-
-                {/* Interactive Filter Tabs */}
-                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedManpowerGroup('ALL')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      selectedManpowerGroup === 'ALL' ? 'text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    style={
-                      selectedManpowerGroup === 'ALL'
-                        ? { backgroundColor: siteConfig.primaryNavy }
-                        : undefined
-                    }
-                  >
-                    All Categories
-                  </button>
-                  {manpowerGroups.map((grp) => (
-                    <button
-                      key={grp.groupCode}
-                      type="button"
-                      onClick={() => setSelectedManpowerGroup(grp.groupCode)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        selectedManpowerGroup === grp.groupCode
-                          ? 'text-white'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                      style={
-                        selectedManpowerGroup === grp.groupCode
-                          ? { backgroundColor: siteConfig.primaryNavy }
-                          : undefined
-                      }
-                    >
-                      {grp.groupCode.split('·')[1]?.trim() || grp.groupCode}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {filteredManpowerGroups.map((group, groupIdx) => (
-                  <div
-                    key={group.groupCode}
-                    className="bg-slate-50/70 border border-slate-200 rounded-xl p-5 flex flex-col justify-between space-y-4"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs font-mono-tabular text-slate-500">
-                        <span>{group.groupCode}</span>
-                        <span className="font-bold" style={{ color: siteConfig.primaryNavy }}>
-                          {group.totalAvailable} Active Pool
-                        </span>
-                      </div>
-
-                      {isAdminMode ? (
-                        <input
-                          type="text"
-                          value={group.groupTitle}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setManpowerGroups((prev) =>
-                              prev.map((g, i) => (i === groupIdx ? { ...g, groupTitle: val } : g))
-                            );
-                          }}
-                          className="w-full px-2.5 py-1 text-sm font-bold bg-white border border-slate-300 rounded"
-                        />
-                      ) : (
-                        <h4 className="text-base font-bold text-slate-900">{group.groupTitle}</h4>
-                      )}
-
-                      <div className="divide-y divide-slate-200/80 border-t border-slate-200 pt-2">
-                        {group.roles.map((role, roleIdx) => (
-                          <div key={`${group.groupCode}-${roleIdx}`} className="py-2.5 space-y-1">
-                            {isAdminMode ? (
-                              <div className="space-y-1 bg-white p-2 rounded border border-slate-200">
-                                <div className="flex gap-1.5">
-                                  <input
-                                    type="text"
-                                    value={role.trade}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setManpowerGroups((prev) =>
-                                        prev.map((g, gi) =>
-                                          gi === groupIdx
-                                            ? {
-                                                ...g,
-                                                roles: g.roles.map((r, ri) =>
-                                                  ri === roleIdx ? { ...r, trade: val } : r
-                                                ),
-                                              }
-                                            : g
-                                        )
-                                      );
-                                    }}
-                                    className="flex-1 px-2 py-0.5 text-xs font-semibold border border-slate-300 rounded"
-                                  />
-                                  <input
-                                    type="number"
-                                    value={role.headcount}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value);
-                                      setManpowerGroups((prev) =>
-                                        prev.map((g, gi) =>
-                                          gi === groupIdx
-                                            ? {
-                                                ...g,
-                                                roles: g.roles.map((r, ri) =>
-                                                  ri === roleIdx ? { ...r, headcount: val } : r
-                                                ),
-                                              }
-                                            : g
-                                        )
-                                      );
-                                    }}
-                                    className="w-16 px-2 py-0.5 text-xs font-mono-tabular border border-slate-300 rounded"
-                                  />
-                                </div>
-                                <input
-                                  type="text"
-                                  value={role.specialization}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setManpowerGroups((prev) =>
-                                      prev.map((g, gi) =>
-                                        gi === groupIdx
-                                          ? {
-                                              ...g,
-                                              roles: g.roles.map((r, ri) =>
-                                                ri === roleIdx ? { ...r, specialization: val } : r
-                                              ),
-                                            }
-                                          : g
-                                      )
-                                    );
-                                  }}
-                                  className="w-full px-2 py-0.5 text-[11px] border border-slate-300 rounded"
-                                />
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center justify-between text-xs font-semibold text-slate-900">
-                                  <span>{role.trade}</span>
-                                  <span
-                                    className="font-mono-tabular"
-                                    style={{ color: siteConfig.accentOrange }}
-                                  >
-                                    {role.headcount} Available
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-slate-500">
-                                  {role.grade} · {role.specialization}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">{group.certificationStandard}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInquiryForm((prev) => ({
-                            ...prev,
-                            inquiryType: 'Skilled & Unskilled Manpower Supply',
-                            manpowerDetails: `Requesting deployment from ${group.groupTitle}`,
-                          }));
-                          scrollToSection('contact');
-                        }}
-                        className="font-semibold text-[#1e3a8a] hover:text-[#f97316] whitespace-nowrap shrink-0 cursor-pointer"
-                      >
-                        Request Mobilization →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {renderSectionCustomBlocks('services')}
           </div>
         </section>
 
-        {/* SECTION 4: RUNNING PROJECT SITES (With Interactive Details Modal & Admin Add Form) */}
-        <section id="running-projects" className="py-16 px-6 bg-white border-b border-slate-200">
+        {/* SECTION 4: COMPLETED PROJECTS PORTFOLIO */}
+        <section id="portfolio" className="py-16 px-6 bg-white border-b border-slate-200">
+          <div className="max-w-[1360px] mx-auto space-y-10">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+              <div className="space-y-2">
+                {renderEditableElement(
+                  'sec-portfolio-kicker',
+                  'PROVEN TRACK RECORD & HANDOVER CREDENTIALS',
+                  'div',
+                  'text-xs font-mono-tabular font-semibold',
+                  { color: siteConfig.accentOrange }
+                )}
+                {renderEditableElement(
+                  'sec-portfolio-heading',
+                  'Completed Projects Portfolio',
+                  'h2',
+                  'text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight',
+                  { color: siteConfig.primaryNavy, textWrap: 'balance' }
+                )}
+                {renderEditableElement(
+                  'sec-portfolio-subtext',
+                  'Selected civil engineering, flood protection earthworks, industrial stainless piping, and utility pipeline contracts successfully handed over across the Sultanate of Oman.',
+                  'p',
+                  'text-sm sm:text-base text-slate-600 max-w-2xl'
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                  {[
+                    'All',
+                    'Civil Works',
+                    'Earth Works',
+                    'Mechanical & Electrical Works',
+                    'Pipeline Works & Special Structures',
+                  ].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setPortfolioFilter(cat)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        portfolioFilter === cat ? 'text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      style={
+                        portfolioFilter === cat ? { backgroundColor: siteConfig.primaryNavy } : undefined
+                      }
+                    >
+                      {cat === 'Pipeline Works & Special Structures' ? 'Pipelines & Structures' : cat}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdminMode) setIsAdminMode(true);
+                    setShowAddCompletedForm((prev) => !prev);
+                  }}
+                  className="px-3.5 py-2 text-xs font-semibold text-white rounded-lg hover:opacity-95 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  style={{ backgroundColor: siteConfig.accentOrange }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{showAddCompletedForm ? 'Close Form' : 'Add Completed Project'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Admin Add Completed Portfolio Form */}
+            {showAddCompletedForm && (
+              <form
+                onSubmit={handleAddCompletedProject}
+                className="bg-slate-50 p-6 rounded-2xl border-2 border-orange-300 space-y-4"
+              >
+                <h3 className="text-base font-bold text-slate-900">Add Completed Project to Portfolio</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Project Title *"
+                    value={newCompleted.title}
+                    onChange={(e) => setNewCompleted({ ...newCompleted, title: e.target.value })}
+                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Client Organization *"
+                    value={newCompleted.client}
+                    onChange={(e) => setNewCompleted({ ...newCompleted, client: e.target.value })}
+                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Location (e.g., Sohar, Oman) *"
+                    value={newCompleted.location}
+                    onChange={(e) => setNewCompleted({ ...newCompleted, location: e.target.value })}
+                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Handover Year (e.g., 2025)"
+                    value={newCompleted.completionYear}
+                    onChange={(e) => setNewCompleted({ ...newCompleted, completionYear: e.target.value })}
+                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Quantified Metric (e.g., OMR 1.4M · Zero LTI)"
+                    value={newCompleted.contractValue}
+                    onChange={(e) => setNewCompleted({ ...newCompleted, contractValue: e.target.value })}
+                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Image URL"
+                      value={newCompleted.imageUrl}
+                      onChange={(e) => setNewCompleted({ ...newCompleted, imageUrl: e.target.value })}
+                      className="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openPhotoEditor('Upload Completed Project Photo', newCompleted.imageUrl, (url) =>
+                          setNewCompleted((prev) => ({ ...prev, imageUrl: url }))
+                        )
+                      }
+                      className="px-3 py-2 text-xs font-semibold bg-orange-100 text-[#f97316] border border-orange-300 rounded-lg cursor-pointer shrink-0"
+                    >
+                      Upload
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Completed project scope and outcome description..."
+                  value={newCompleted.description}
+                  onChange={(e) => setNewCompleted({ ...newCompleted, description: e.target.value })}
+                  className="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCompletedForm(false)}
+                    className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-semibold text-white rounded-lg cursor-pointer"
+                    style={{ backgroundColor: siteConfig.primaryNavy }}
+                  >
+                    Save Portfolio Record
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredCompletedProjects.map((item, idx) => {
+                const sitePhotoCount = getSiteGalleryPhotos(item).length;
+                return (
+                  <article
+                    key={item.id}
+                    onClick={() => {
+                      if (!isAdminMode) {
+                        setSelectedCompletedProjectId(item.id);
+                        setShowAddSitePhotoForm(false);
+                      }
+                    }}
+                    className={`bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between transition-all ${
+                      !isAdminMode
+                        ? 'cursor-pointer hover:border-[#1e3a8a] hover:shadow-lg group'
+                        : ''
+                    }`}
+                  >
+                    <div>
+                      <div className="relative aspect-16/9 bg-slate-100 border-b border-slate-200 overflow-hidden">
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          referrerPolicy="no-referrer"
+                          onClick={(e) => {
+                            if (isAdminMode) {
+                              e.stopPropagation();
+                              openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
+                                const updated = { ...item, imageUrl: newUrl };
+                                setCompletedProjects((prev) =>
+                                  prev.map((c) => (c.id === item.id ? updated : c))
+                                );
+                                saveSingleCompletedProject(updated);
+                              });
+                            }
+                          }}
+                          onError={(e) => {
+                            handleImageError(e, item.category || 'Civil Works', item.title, item.location || 'Muscat, Oman');
+                          }}
+                          className={`w-full h-full object-cover transition-transform duration-300 ${
+                            isAdminMode ? 'cursor-pointer' : 'group-hover:scale-105'
+                          }`}
+                        />
+                        {/* Site Number & Photo Gallery Count Badge */}
+                        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+                          <span
+                            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-xs font-mono-tabular"
+                            style={{ backgroundColor: siteConfig.primaryNavy }}
+                          >
+                            SITE 0{idx + 1}
+                          </span>
+                          <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-900/80 text-white rounded-lg backdrop-blur-xs flex items-center gap-1">
+                            <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
+                            <span>{sitePhotoCount} Site Photos</span>
+                          </span>
+                        </div>
+
+                        {isAdminMode && (
+                          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
+                                  const updated = { ...item, imageUrl: newUrl };
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? updated : c))
+                                  );
+                                  saveSingleCompletedProject(updated);
+                                });
+                              }}
+                              className="px-2.5 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>Change Cover</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCompletedProject(item.id);
+                              }}
+                              className="p-1.5 bg-white/95 text-red-600 rounded-lg border border-slate-200 hover:bg-red-50 cursor-pointer shadow-xs"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-6 space-y-3">
+                        {isAdminMode ? (
+                          <div
+                            className="space-y-2 bg-white p-3.5 rounded-xl border border-orange-200"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between text-[11px] font-bold text-[#f97316]">
+                              <span>EDIT COMPLETED PROJECT</span>
+                              {confirmedBadgeId === item.id && (
+                                <span className="text-emerald-700">✓ Confirmed</span>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={item.title}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCompletedProjects((prev) =>
+                                  prev.map((c) => (c.id === item.id ? { ...c, title: val } : c))
+                                );
+                              }}
+                              placeholder="Project Title"
+                              className="w-full px-2.5 py-1.5 text-sm font-bold bg-slate-50 border border-slate-300 rounded"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                value={item.client}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, client: val } : c))
+                                  );
+                                }}
+                                placeholder="Client Name"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                              <input
+                                type="text"
+                                value={item.location}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, location: val } : c))
+                                  );
+                                }}
+                                placeholder="Location"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <input
+                                type="text"
+                                value={item.category}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, category: val } : c))
+                                  );
+                                }}
+                                placeholder="Category"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
+                              />
+                              <input
+                                type="text"
+                                value={item.completionYear}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, completionYear: val } : c))
+                                  );
+                                }}
+                                placeholder="Year"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                              />
+                              <input
+                                type="text"
+                                value={item.contractValue}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCompletedProjects((prev) =>
+                                    prev.map((c) => (c.id === item.id ? { ...c, contractValue: val } : c))
+                                  );
+                                }}
+                                placeholder="Contract Value"
+                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
+                              />
+                            </div>
+                            <textarea
+                              rows={2}
+                              value={item.description}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCompletedProjects((prev) =>
+                                  prev.map((c) => (c.id === item.id ? { ...c, description: val } : c))
+                                );
+                              }}
+                              placeholder="Short front-page summary"
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
+                            />
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => saveSingleCompletedProject(item)}
+                                className="flex-1 py-1.5 px-3 text-xs font-semibold text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                                style={{ backgroundColor: siteConfig.primaryNavy }}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Save Card</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCompletedProjectId(item.id);
+                                  setShowAddSitePhotoForm(false);
+                                }}
+                                className="py-1.5 px-3 text-xs font-bold text-white bg-[#f97316] hover:bg-orange-600 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>Edit Site Details & Gallery ({sitePhotoCount})</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-500">
+                              <span className="font-semibold" style={{ color: siteConfig.primaryNavy }}>
+                                {item.category}
+                              </span>
+                              <span>·</span>
+                              <span>{item.location}</span>
+                              <span>·</span>
+                              <span className="font-semibold" style={{ color: siteConfig.accentOrange }}>
+                                Handover {item.completionYear}
+                              </span>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#1e3a8a] transition-colors">
+                              {item.title}
+                            </h3>
+                            <p className="text-sm text-slate-600 leading-relaxed">{item.description}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="space-y-0.5">
+                        <div className="font-medium text-slate-700">Client: {item.client}</div>
+                        <div
+                          className="font-mono-tabular font-semibold text-[11px]"
+                          style={{ color: siteConfig.primaryNavy }}
+                        >
+                          {item.contractValue}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCompletedProjectId(item.id);
+                          setShowAddSitePhotoForm(false);
+                        }}
+                        className="px-3.5 py-2 text-xs font-bold text-white rounded-xl flex items-center gap-1.5 shadow-xs hover:opacity-95 cursor-pointer transition-all"
+                        style={{ backgroundColor: siteConfig.primaryNavy }}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
+                        <span>View Site Details & Photo Gallery ({sitePhotoCount})</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {renderSectionCustomBlocks('portfolio')}
+          </div>
+        </section>
+
+        {/* SECTION 5: RUNNING PROJECT SITES (With Interactive Details Modal & Admin Add Form) */}
+        <section id="running-projects" className="py-16 px-6 bg-slate-50 border-b border-slate-200">
           <div className="max-w-[1360px] mx-auto space-y-10">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="space-y-2">
@@ -4900,854 +5295,149 @@ function doPost(e) {
           </div>
         </section>
 
-        {/* SECTION 5: PHOTO GALLERY WITH SLIDER & CAROUSEL */}
-        <section id="gallery" className="py-16 px-6 bg-slate-50 border-b border-slate-200">
+        {/* SECTION 6: WORK SECTION PHOTO GALLERIES (Work-Wise Photo Gallery System) */}
+        <section id="gallery" className="py-16 px-6 bg-white border-b border-slate-200">
           <div className="max-w-[1360px] mx-auto space-y-10">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="space-y-2">
                 {renderEditableElement(
                   'sec-gallery-kicker',
-                  'SITE EXECUTION PHOTOGRAPHY & SLIDER',
+                  'SPECIALIZED WORK CATEGORIES & SITE PHOTO ARCHIVES',
                   'div',
                   'text-xs font-mono-tabular font-semibold',
                   { color: siteConfig.accentOrange }
                 )}
                 {renderEditableElement(
                   'sec-gallery-heading',
-                  'Photo Gallery & Interactive Site Carousel',
+                  'Photo Gallery System',
                   'h2',
                   'text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight',
                   { color: siteConfig.primaryNavy, textWrap: 'balance' }
                 )}
                 {renderEditableElement(
                   'sec-gallery-subtext',
-                  'Visual documentation of our civil structures, box culverts, heavy earthwork fleets, MEP manifolds, and site workforce across Oman.',
-                  'p',
-                  'text-sm sm:text-base text-slate-600 max-w-2xl'
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAutoPlay((prev) => !prev)}
-                  className="px-3.5 py-2 text-xs font-semibold bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-100 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  {isAutoPlay ? 'Pause Auto-Slider' : 'Resume Auto-Slider'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAdminMode) setIsAdminMode(true);
-                    setShowAddGalleryForm((prev) => !prev);
-                  }}
-                  className="px-4 py-2 text-xs font-semibold text-white rounded-lg hover:opacity-95 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                  style={{ backgroundColor: siteConfig.primaryNavy }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{showAddGalleryForm ? 'Close Photo Form' : 'Add Photo / Upload'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Admin Add Photo Form */}
-            {showAddGalleryForm && (
-              <form
-                onSubmit={handleAddGalleryPhoto}
-                className="bg-white p-6 rounded-2xl border-2 border-orange-300 space-y-4"
-              >
-                <h3 className="text-base font-bold text-slate-900">
-                  Add New Work Photo to Gallery & Carousel
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Photo Title *"
-                    value={newPhoto.title}
-                    onChange={(e) => setNewPhoto({ ...newPhoto, title: e.target.value })}
-                    className="px-3.5 py-2 text-sm border border-slate-300 rounded-lg"
-                  />
-                  <select
-                    value={newPhoto.category}
-                    onChange={(e) => setNewPhoto({ ...newPhoto, category: e.target.value })}
-                    className="px-3.5 py-2 text-sm border border-slate-300 rounded-lg"
-                  >
-                    <option value="Civil & Structural">Civil & Structural</option>
-                    <option value="Earth Works">Earth Works</option>
-                    <option value="Manpower Teams">Manpower Teams</option>
-                    <option value="MEP & Piping">MEP & Piping</option>
-                    <option value="Pipeline & Structures">Pipeline & Structures</option>
-                  </select>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Site Location *"
-                    value={newPhoto.location}
-                    onChange={(e) => setNewPhoto({ ...newPhoto, location: e.target.value })}
-                    className="px-3.5 py-2 text-sm border border-slate-300 rounded-lg"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Image URL *"
-                      value={newPhoto.imageUrl}
-                      onChange={(e) => setNewPhoto({ ...newPhoto, imageUrl: e.target.value })}
-                      className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openPhotoEditor('Upload New Gallery Photo', newPhoto.imageUrl, (url) =>
-                          setNewPhoto((prev) => ({ ...prev, imageUrl: url }))
-                        )
-                      }
-                      className="px-3 py-2 text-xs font-semibold bg-orange-100 text-[#f97316] border border-orange-300 rounded-lg cursor-pointer shrink-0"
-                    >
-                      Upload
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  rows={2}
-                  required
-                  placeholder="Technical caption describing the site activity..."
-                  value={newPhoto.caption}
-                  onChange={(e) => setNewPhoto({ ...newPhoto, caption: e.target.value })}
-                  className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddGalleryForm(false)}
-                    className="px-4 py-2 text-xs font-medium text-slate-600 bg-slate-100 rounded-lg"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-semibold text-white bg-[#f97316] rounded-lg hover:bg-orange-600 cursor-pointer"
-                  >
-                    Add Photo to Slider
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Featured Interactive Carousel / Slider */}
-            {activeSlide && (
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                <div className="relative aspect-16/9 max-h-[480px] w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={activeSlide.imageUrl}
-                    alt={activeSlide.title}
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      handleImageError(e, activeSlide.category || 'Civil Works', activeSlide.title, activeSlide.location || 'Muscat, Oman');
-                    }}
-                    className="w-full h-full object-cover"
-                  />
-                  {/* Measured contrast scrim for text legibility */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent flex flex-col justify-end p-6 sm:p-8">
-                    <div className="max-w-3xl space-y-2 text-white">
-                      <div className="flex items-center gap-2 text-xs font-mono-tabular text-orange-300">
-                        <span>
-                          SLIDE {String(currentSlideIndex + 1).padStart(2, '0')} /{' '}
-                          {String(galleryPhotos.length).padStart(2, '0')}
-                        </span>
-                        <span>·</span>
-                        <span>{activeSlide.category}</span>
-                        <span>·</span>
-                        <span>{activeSlide.location}</span>
-                      </div>
-                      <h3 className="text-xl sm:text-2xl font-bold tracking-tight">{activeSlide.title}</h3>
-                      <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">{activeSlide.caption}</p>
-                    </div>
-                  </div>
-
-                  {isAdminMode && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openPhotoEditor(`Carousel Slide: ${activeSlide.title}`, activeSlide.imageUrl, (newUrl) => {
-                          const updated = { ...activeSlide, imageUrl: newUrl };
-                          setGalleryPhotos((prev) =>
-                            prev.map((p) => (p.id === activeSlide.id ? updated : p))
-                          );
-                          saveSingleGalleryPhoto(updated);
-                        })
-                      }
-                      className="absolute top-4 right-4 px-3.5 py-2 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Camera className="w-4 h-4" />
-                      <span>Change / Upload Slide Photo</span>
-                    </button>
-                  )}
-
-                  {/* Previous / Next Slider Controls */}
-                  <button
-                    type="button"
-                    aria-label="Previous slide"
-                    onClick={() =>
-                      setCurrentSlideIndex(
-                        (prev) => (prev - 1 + galleryPhotos.length) % galleryPhotos.length
-                      )
-                    }
-                    className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-slate-900 hover:bg-white flex items-center justify-center shadow-md cursor-pointer"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Next slide"
-                    onClick={() => setCurrentSlideIndex((prev) => (prev + 1) % galleryPhotos.length)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-slate-900 hover:bg-white flex items-center justify-center shadow-md cursor-pointer"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Carousel Thumbnail & Indicator Strip */}
-                <div className="px-6 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
-                  <div className="flex items-center gap-2">
-                    {galleryPhotos.map((photo, index) => (
-                      <button
-                        key={photo.id}
-                        type="button"
-                        onClick={() => setCurrentSlideIndex(index)}
-                        className={`px-3 py-1.5 text-xs font-mono-tabular rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                          index === currentSlideIndex
-                            ? 'text-white font-semibold'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                        style={
-                          index === currentSlideIndex
-                            ? { backgroundColor: siteConfig.primaryNavy }
-                            : undefined
-                        }
-                      >
-                        {String(index + 1).padStart(2, '0')}. {photo.title.slice(0, 22)}...
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Category Filter & Responsive Photo Grid */}
-            <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
-                  {[
-                    'All',
-                    'Civil & Structural',
-                    'Earth Works',
-                    'Manpower Teams',
-                    'MEP & Piping',
-                    'Pipeline & Structures',
-                  ].map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setGalleryCategoryFilter(cat)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        galleryCategoryFilter === cat
-                          ? 'bg-white text-[#1e3a8a] shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-xs font-mono-tabular text-slate-500">
-                  Showing {filteredGalleryPhotos.length} of {galleryPhotos.length} work photographs
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredGalleryPhotos.map((photo, idx) => (
-                  <div
-                    key={photo.id}
-                    className="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between group"
-                  >
-                    <div
-                      onClick={() => {
-                        if (isAdminMode) {
-                          openPhotoEditor(`Gallery Photo: ${photo.title}`, photo.imageUrl, (newUrl) => {
-                            const updated = { ...photo, imageUrl: newUrl };
-                            setGalleryPhotos((prev) =>
-                              prev.map((p) => (p.id === photo.id ? updated : p))
-                            );
-                            saveSingleGalleryPhoto(updated);
-                          });
-                        } else {
-                          setLightboxPhoto(photo);
-                        }
-                      }}
-                      className="relative aspect-16/9 bg-slate-100 border-b border-slate-200 overflow-hidden cursor-pointer"
-                    >
-                      <img
-                        src={photo.imageUrl}
-                        alt={photo.title}
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          handleImageError(e, photo.category || 'Civil Works', photo.title, photo.location || 'Muscat, Oman');
-                        }}
-                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-                      />
-                      {isAdminMode && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openPhotoEditor(`Gallery Photo: ${photo.title}`, photo.imageUrl, (newUrl) => {
-                              const updated = { ...photo, imageUrl: newUrl };
-                              setGalleryPhotos((prev) =>
-                                prev.map((p) => (p.id === photo.id ? updated : p))
-                              );
-                              saveSingleGalleryPhoto(updated);
-                            });
-                          }}
-                          className="absolute top-3 right-3 px-2.5 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>Change Photo</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-5 space-y-2 flex-1 flex flex-col justify-between">
-                      {isAdminMode ? (
-                        <div className="space-y-2 bg-orange-50/50 p-3 rounded-lg border border-orange-200">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#f97316]">
-                            <span>EDIT GALLERY PHOTO</span>
-                            {confirmedBadgeId === photo.id && (
-                              <span className="text-emerald-700">✓ Saved</span>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            value={photo.title}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setGalleryPhotos((prev) =>
-                                prev.map((p) => (p.id === photo.id ? { ...p, title: val } : p))
-                              );
-                            }}
-                            placeholder="Photo Title"
-                            className="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-300 rounded"
-                          />
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <input
-                              type="text"
-                              value={photo.category}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setGalleryPhotos((prev) =>
-                                  prev.map((p) => (p.id === photo.id ? { ...p, category: val } : p))
-                                );
-                              }}
-                              placeholder="Category"
-                              className="px-2 py-1 text-xs bg-white border border-slate-300 rounded"
-                            />
-                            <input
-                              type="text"
-                              value={photo.location}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setGalleryPhotos((prev) =>
-                                  prev.map((p) => (p.id === photo.id ? { ...p, location: val } : p))
-                                );
-                              }}
-                              placeholder="Location"
-                              className="px-2 py-1 text-xs bg-white border border-slate-300 rounded"
-                            />
-                          </div>
-                          <textarea
-                            rows={2}
-                            value={photo.caption}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setGalleryPhotos((prev) =>
-                                prev.map((p) => (p.id === photo.id ? { ...p, caption: val } : p))
-                              );
-                            }}
-                            placeholder="Caption"
-                            className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded"
-                          />
-                          <div className="flex items-center gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => saveSingleGalleryPhoto(photo)}
-                              className="flex-1 py-1.5 text-xs font-semibold text-white rounded cursor-pointer"
-                              style={{ backgroundColor: siteConfig.primaryNavy }}
-                            >
-                              Save Photo
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteGalleryPhoto(photo.id)}
-                              className="px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                            <span className="font-semibold" style={{ color: siteConfig.accentOrange }}>
-                              {photo.category}
-                            </span>
-                            <span>{photo.location}</span>
-                          </div>
-                          <h4 className="text-base font-bold text-slate-900">{photo.title}</h4>
-                          <p className="text-xs text-slate-600 leading-relaxed">{photo.caption}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {renderSectionCustomBlocks('gallery')}
-          </div>
-        </section>
-
-        {/* SECTION 6: COMPLETED PROJECTS PORTFOLIO */}
-        <section id="portfolio" className="py-16 px-6 bg-white border-b border-slate-200">
-          <div className="max-w-[1360px] mx-auto space-y-10">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div className="space-y-2">
-                {renderEditableElement(
-                  'sec-portfolio-kicker',
-                  'PROVEN TRACK RECORD & HANDOVER CREDENTIALS',
-                  'div',
-                  'text-xs font-mono-tabular font-semibold',
-                  { color: siteConfig.accentOrange }
-                )}
-                {renderEditableElement(
-                  'sec-portfolio-heading',
-                  'Completed Projects Portfolio',
-                  'h2',
-                  'text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight',
-                  { color: siteConfig.primaryNavy, textWrap: 'balance' }
-                )}
-                {renderEditableElement(
-                  'sec-portfolio-subtext',
-                  'Selected civil engineering, flood protection earthworks, industrial stainless piping, and utility pipeline contracts successfully handed over across the Sultanate of Oman.',
+                  'Explore our photographic archives organized by work division. Click any work section below to open its dedicated photo gallery.',
                   'p',
                   'text-sm sm:text-base text-slate-600 max-w-2xl'
                 )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/80 rounded-lg">
                   {[
                     'All',
-                    'Civil Works',
-                    'Earth Works',
-                    'Mechanical & Electrical Works',
-                    'Pipeline Works & Special Structures',
+                    'Civil & Structural',
+                    'Earth & Wadi',
+                    'Special Structures',
+                    'Precast & Modular',
+                    'Refinery & Industrial',
+                    'Certified Workforce',
                   ].map((cat) => (
                     <button
                       key={cat}
                       type="button"
-                      onClick={() => setPortfolioFilter(cat)}
+                      onClick={() => setWorkSectionFilter(cat)}
                       className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        portfolioFilter === cat ? 'text-white' : 'text-slate-600 hover:text-slate-900'
+                        workSectionFilter === cat
+                          ? 'bg-white text-[#1e3a8a] shadow-2xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
-                      style={
-                        portfolioFilter === cat ? { backgroundColor: siteConfig.primaryNavy } : undefined
-                      }
                     >
-                      {cat === 'Pipeline Works & Special Structures' ? 'Pipelines & Structures' : cat}
+                      {cat === 'All' ? `All Work (${workSectionGalleries.length})` : cat}
                     </button>
                   ))}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAdminMode) setIsAdminMode(true);
-                    setShowAddCompletedForm((prev) => !prev);
-                  }}
-                  className="px-3.5 py-2 text-xs font-semibold text-white rounded-lg hover:opacity-95 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                  style={{ backgroundColor: siteConfig.accentOrange }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{showAddCompletedForm ? 'Close Form' : 'Add Completed Project'}</span>
-                </button>
               </div>
             </div>
 
-            {/* Admin Add Completed Portfolio Form */}
-            {showAddCompletedForm && (
-              <form
-                onSubmit={handleAddCompletedProject}
-                className="bg-slate-50 p-6 rounded-2xl border-2 border-orange-300 space-y-4"
-              >
-                <h3 className="text-base font-bold text-slate-900">Add Completed Project to Portfolio</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Project Title *"
-                    value={newCompleted.title}
-                    onChange={(e) => setNewCompleted({ ...newCompleted, title: e.target.value })}
-                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Client Organization *"
-                    value={newCompleted.client}
-                    onChange={(e) => setNewCompleted({ ...newCompleted, client: e.target.value })}
-                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Location (e.g., Sohar, Oman) *"
-                    value={newCompleted.location}
-                    onChange={(e) => setNewCompleted({ ...newCompleted, location: e.target.value })}
-                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Handover Year (e.g., 2025)"
-                    value={newCompleted.completionYear}
-                    onChange={(e) => setNewCompleted({ ...newCompleted, completionYear: e.target.value })}
-                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Quantified Metric (e.g., OMR 1.4M · Zero LTI)"
-                    value={newCompleted.contractValue}
-                    onChange={(e) => setNewCompleted({ ...newCompleted, contractValue: e.target.value })}
-                    className="px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Image URL"
-                      value={newCompleted.imageUrl}
-                      onChange={(e) => setNewCompleted({ ...newCompleted, imageUrl: e.target.value })}
-                      className="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg font-mono-tabular"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openPhotoEditor('Upload Completed Project Photo', newCompleted.imageUrl, (url) =>
-                          setNewCompleted((prev) => ({ ...prev, imageUrl: url }))
-                        )
-                      }
-                      className="px-3 py-2 text-xs font-semibold bg-orange-100 text-[#f97316] border border-orange-300 rounded-lg cursor-pointer shrink-0"
-                    >
-                      Upload
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  rows={2}
-                  required
-                  placeholder="Completed project scope and outcome description..."
-                  value={newCompleted.description}
-                  onChange={(e) => setNewCompleted({ ...newCompleted, description: e.target.value })}
-                  className="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCompletedForm(false)}
-                    className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-lg"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-semibold text-white rounded-lg cursor-pointer"
-                    style={{ backgroundColor: siteConfig.primaryNavy }}
-                  >
-                    Save Portfolio Record
-                  </button>
-                </div>
-              </form>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredCompletedProjects.map((item, idx) => {
-                const sitePhotoCount = getSiteGalleryPhotos(item).length;
-                return (
-                  <article
-                    key={item.id}
-                    onClick={() => {
-                      if (!isAdminMode) {
-                        setSelectedCompletedProjectId(item.id);
-                        setShowAddSitePhotoForm(false);
-                      }
-                    }}
-                    className={`bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between transition-all ${
-                      !isAdminMode
-                        ? 'cursor-pointer hover:border-[#1e3a8a] hover:shadow-lg group'
-                        : ''
-                    }`}
-                  >
-                    <div>
-                      <div className="relative aspect-16/9 bg-slate-100 border-b border-slate-200 overflow-hidden">
-                        <img
-                          src={item.imageUrl}
-                          alt={item.title}
-                          referrerPolicy="no-referrer"
-                          onClick={(e) => {
-                            if (isAdminMode) {
-                              e.stopPropagation();
-                              openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
-                                const updated = { ...item, imageUrl: newUrl };
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? updated : c))
-                                );
-                                saveSingleCompletedProject(updated);
-                              });
-                            }
-                          }}
-                          onError={(e) => {
-                            handleImageError(e, item.category || 'Civil Works', item.title, item.location || 'Muscat, Oman');
-                          }}
-                          className={`w-full h-full object-cover transition-transform duration-300 ${
-                            isAdminMode ? 'cursor-pointer' : 'group-hover:scale-105'
-                          }`}
-                        />
-                        {/* Site Number & Photo Gallery Count Badge */}
-                        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-                          <span
-                            className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-xs font-mono-tabular"
-                            style={{ backgroundColor: siteConfig.primaryNavy }}
-                          >
-                            SITE 0{idx + 1}
-                          </span>
-                          <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-900/80 text-white rounded-lg backdrop-blur-xs flex items-center gap-1">
-                            <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
-                            <span>{sitePhotoCount} Site Photos</span>
-                          </span>
-                        </div>
-
-                        {isAdminMode && (
-                          <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPhotoEditor(`Completed Project Photo: ${item.title}`, item.imageUrl, (newUrl) => {
-                                  const updated = { ...item, imageUrl: newUrl };
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? updated : c))
-                                  );
-                                  saveSingleCompletedProject(updated);
-                                });
-                              }}
-                              className="px-2.5 py-1.5 text-xs font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                              <span>Change Cover</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteCompletedProject(item.id);
-                              }}
-                              className="p-1.5 bg-white/95 text-red-600 rounded-lg border border-slate-200 hover:bg-red-50 cursor-pointer shadow-xs"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-6 space-y-3">
-                        {isAdminMode ? (
-                          <div
-                            className="space-y-2 bg-white p-3.5 rounded-xl border border-orange-200"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-between text-[11px] font-bold text-[#f97316]">
-                              <span>EDIT COMPLETED PROJECT</span>
-                              {confirmedBadgeId === item.id && (
-                                <span className="text-emerald-700">✓ Confirmed</span>
-                              )}
-                            </div>
-                            <input
-                              type="text"
-                              value={item.title}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, title: val } : c))
-                                );
-                              }}
-                              placeholder="Project Title"
-                              className="w-full px-2.5 py-1.5 text-sm font-bold bg-slate-50 border border-slate-300 rounded"
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                type="text"
-                                value={item.client}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? { ...c, client: val } : c))
-                                  );
-                                }}
-                                placeholder="Client Name"
-                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                              />
-                              <input
-                                type="text"
-                                value={item.location}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? { ...c, location: val } : c))
-                                  );
-                                }}
-                                placeholder="Location"
-                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                              />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <input
-                                type="text"
-                                value={item.category}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? { ...c, category: val } : c))
-                                  );
-                                }}
-                                placeholder="Category"
-                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded"
-                              />
-                              <input
-                                type="text"
-                                value={item.completionYear}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? { ...c, completionYear: val } : c))
-                                  );
-                                }}
-                                placeholder="Year"
-                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
-                              />
-                              <input
-                                type="text"
-                                value={item.contractValue}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setCompletedProjects((prev) =>
-                                    prev.map((c) => (c.id === item.id ? { ...c, contractValue: val } : c))
-                                  );
-                                }}
-                                placeholder="Contract Value"
-                                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded font-mono-tabular"
-                              />
-                            </div>
-                            <textarea
-                              rows={2}
-                              value={item.description}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCompletedProjects((prev) =>
-                                  prev.map((c) => (c.id === item.id ? { ...c, description: val } : c))
-                                );
-                              }}
-                              placeholder="Short front-page summary"
-                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
-                            />
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => saveSingleCompletedProject(item)}
-                                className="flex-1 py-1.5 px-3 text-xs font-semibold text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                                style={{ backgroundColor: siteConfig.primaryNavy }}
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Save Card</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCompletedProjectId(item.id);
-                                  setShowAddSitePhotoForm(false);
-                                }}
-                                className="py-1.5 px-3 text-xs font-bold text-white bg-[#f97316] hover:bg-orange-600 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                <ImageIcon className="w-3.5 h-3.5" />
-                                <span>Edit Site Details & Gallery ({sitePhotoCount})</span>
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-500">
-                              <span className="font-semibold" style={{ color: siteConfig.primaryNavy }}>
-                                {item.category}
-                              </span>
-                              <span>·</span>
-                              <span>{item.location}</span>
-                              <span>·</span>
-                              <span className="font-semibold" style={{ color: siteConfig.accentOrange }}>
-                                Handover {item.completionYear}
-                              </span>
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#1e3a8a] transition-colors">
-                              {item.title}
-                            </h3>
-                            <p className="text-sm text-slate-600 leading-relaxed">{item.description}</p>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="space-y-0.5">
-                        <div className="font-medium text-slate-700">Client: {item.client}</div>
-                        <div
-                          className="font-mono-tabular font-semibold text-[11px]"
-                          style={{ color: siteConfig.primaryNavy }}
+            {/* Grid of Work Section Cards (Identical style to Completed Portfolio) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredWorkSections.map((sec, idx) => (
+                <article
+                  key={sec.id}
+                  onClick={() => {
+                    setSelectedWorkSectionId(sec.id);
+                    setShowAddWorkSectionPhotoForm(false);
+                  }}
+                  className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between transition-all cursor-pointer hover:border-[#1e3a8a] hover:shadow-lg group"
+                >
+                  <div>
+                    <div className="relative aspect-16/10 bg-slate-100 border-b border-slate-200 overflow-hidden">
+                      <img
+                        src={sec.coverImageUrl}
+                        alt={sec.title}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => handleImageError(e, sec.category, sec.title, 'Oman')}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                      {/* Section Code & Category Badge */}
+                      <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none">
+                        <span
+                          className="px-2.5 py-1 text-[11px] font-bold text-white rounded-lg shadow-xs font-mono-tabular"
+                          style={{ backgroundColor: siteConfig.primaryNavy }}
                         >
-                          {item.contractValue}
-                        </div>
+                          {sec.sectionCode || `SEC 0${idx + 1}`}
+                        </span>
+                        <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-900/80 text-white rounded-lg backdrop-blur-xs">
+                          {sec.category}
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedCompletedProjectId(item.id);
-                          setShowAddSitePhotoForm(false);
-                        }}
-                        className="px-3.5 py-2 text-xs font-bold text-white rounded-xl flex items-center gap-1.5 shadow-xs hover:opacity-95 cursor-pointer transition-all"
-                        style={{ backgroundColor: siteConfig.primaryNavy }}
-                      >
-                        <ImageIcon className="w-3.5 h-3.5 text-[#f97316]" />
-                        <span>View Site Details & Photo Gallery ({sitePhotoCount})</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+
+                      {/* Photo Count Badge & Admin Replace Button */}
+                      <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 text-[11px] font-bold bg-[#f97316] text-white rounded-lg shadow-xs flex items-center gap-1">
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span>{sec.photos.length} Photos</span>
+                        </span>
+                        {isAdminMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPhotoEditor(`Cover Photo: ${sec.title}`, sec.coverImageUrl, (newUrl) => {
+                                handleChangeWorkSectionCover(sec.id, newUrl);
+                              });
+                            }}
+                            className="p-1.5 bg-white text-slate-800 rounded-lg shadow-xs hover:bg-slate-100 cursor-pointer"
+                            title="Change Section Cover"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-[#f97316]" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Hover Hint */}
+                      <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                        <span className="px-4 py-2 text-xs font-bold text-white bg-slate-900/85 rounded-xl backdrop-blur-xs flex items-center gap-1.5 shadow-md">
+                          <span>Open Gallery ({sec.photos.length} Photos)</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </div>
-                  </article>
-                );
-              })}
+
+                    {/* Front-Page Card Text Area: Strictly text only shows main theme & photo count */}
+                    <div className="p-5 flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-[#1e3a8a] transition-colors">
+                          {sec.title}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                          {sec.category} · {sec.photos.length} Photographs
+                        </p>
+                      </div>
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors group-hover:bg-[#1e3a8a] group-hover:text-white"
+                        style={{ backgroundColor: '#f1f5f9', color: siteConfig.primaryNavy }}
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
 
-            {renderSectionCustomBlocks('portfolio')}
+            {renderSectionCustomBlocks('gallery')}
           </div>
         </section>
 
@@ -8657,6 +8347,413 @@ function doPost(e) {
               </div>
               <h3 className="text-lg font-bold text-slate-900">{lightboxPhoto.title}</h3>
               <p className="text-sm text-slate-600">{lightboxPhoto.caption}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2B: Work Section Photo Gallery Modal (Pure Photo Grid - No Text inside Section as instructed) */}
+      {selectedWorkSectionId && (() => {
+        const activeSection = workSectionGalleries.find((s) => s.id === selectedWorkSectionId);
+        if (!activeSection) return null;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto"
+            onClick={() => {
+              setSelectedWorkSectionId(null);
+              setShowAddWorkSectionPhotoForm(false);
+            }}
+          >
+            <div
+              className="bg-white border border-slate-200 rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Top Header */}
+              <div className="p-4 sm:p-6 border-b border-slate-200 bg-white sticky top-0 z-20 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="px-2.5 py-1 text-xs font-bold text-white rounded-lg font-mono-tabular"
+                      style={{ backgroundColor: siteConfig.primaryNavy }}
+                    >
+                      {activeSection.sectionCode || 'SECTION'}
+                    </span>
+                    <div>
+                      <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+                        <span>{activeSection.title}</span>
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          {activeSection.category}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500 font-mono-tabular">
+                        {activeSection.photos.length} Authentic Site Photographs · Click any photo to expand
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddWorkSectionPhotoForm((prev) => !prev)}
+                      className="px-3.5 py-2 text-xs font-bold text-white rounded-xl shadow-xs hover:opacity-95 flex items-center gap-1.5 cursor-pointer transition-all"
+                      style={{ backgroundColor: siteConfig.accentOrange }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>{showAddWorkSectionPhotoForm ? 'Close Add Box' : 'Add Photo'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkSectionId(null);
+                        setShowAddWorkSectionPhotoForm(false);
+                      }}
+                      className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Close Section Gallery"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Section Tab Switcher (Horizontal scrollable pills) */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar border-t border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+                    Sections:
+                  </span>
+                  {workSectionGalleries.map((sec) => (
+                    <button
+                      key={sec.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkSectionId(sec.id);
+                        setShowAddWorkSectionPhotoForm(false);
+                      }}
+                      className={`px-2.5 py-1 text-xs rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                        sec.id === activeSection.id
+                          ? 'bg-[#1e3a8a] text-white font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{sec.title}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          sec.id === activeSection.id
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {sec.photos.length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add Photo Form Drawer */}
+              {showAddWorkSectionPhotoForm && (
+                <div className="p-4 sm:p-5 bg-orange-50/70 border-b border-orange-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-orange-950 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-[#f97316]" />
+                      <span>Add Photograph to "{activeSection.title}"</span>
+                    </h4>
+                    <span className="text-[11px] text-orange-800">
+                      Upload from phone/device or paste an image URL
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-white p-3 rounded-xl border border-orange-200 flex flex-col justify-between space-y-2">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Option 1: Upload from Device</span>
+                        <p className="text-[11px] text-slate-500">Auto-compressed for instant loading & storage</p>
+                      </div>
+                      <label
+                        className="w-full py-2 px-3 text-xs font-bold text-white rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                        style={{ backgroundColor: siteConfig.primaryNavy }}
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>{isUploadingWorkSectionPhoto ? 'Processing Image...' : 'Choose Photo File'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isUploadingWorkSectionPhoto}
+                          onChange={(e) => handleWorkSectionFileUpload(e, activeSection.id)}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-orange-200 flex flex-col justify-between space-y-2">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Option 2: Paste Image URL</span>
+                        <p className="text-[11px] text-slate-500">Direct link to hosted JPEG, PNG or WebP</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="https://... or /assets/..."
+                          value={newWorkSectionPhotoUrl}
+                          onChange={(e) => setNewWorkSectionPhotoUrl(e.target.value)}
+                          className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono-tabular"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddPhotoToWorkSection(activeSection.id, newWorkSectionPhotoUrl)}
+                          className="px-3 py-1.5 text-xs font-bold text-white rounded-lg shrink-0 cursor-pointer"
+                          style={{ backgroundColor: siteConfig.accentOrange }}
+                        >
+                          Add URL
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Gallery Body: STRICTLY PURE PHOTO GRID (NO TEXT AS REQUESTED) */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
+                {activeSection.photos.length === 0 ? (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                      <ImageIcon className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-600">No photos in this section yet.</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddWorkSectionPhotoForm(true)}
+                      className="px-4 py-2 text-xs font-bold text-white rounded-lg"
+                      style={{ backgroundColor: siteConfig.accentOrange }}
+                    >
+                      Upload First Photo
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                    {activeSection.photos.map((photo, pIdx) => (
+                      <div
+                        key={photo.id}
+                        onClick={() =>
+                          setActiveSectionLightbox({
+                            sectionTitle: activeSection.title,
+                            photos: activeSection.photos.map((p) => p.imageUrl),
+                            currentIndex: pIdx,
+                          })
+                        }
+                        className="group relative aspect-4/3 rounded-xl overflow-hidden bg-slate-200 border border-slate-200/90 shadow-2xs hover:shadow-lg transition-all duration-200 cursor-pointer"
+                      >
+                        <img
+                          src={photo.imageUrl}
+                          alt={`${activeSection.title} photo ${pIdx + 1}`}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => handleImageError(e, activeSection.category, activeSection.title, 'Oman Site')}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+
+                        {/* Hover Overlay with Expand Icon */}
+                        <div className="absolute inset-0 bg-slate-950/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <div className="w-9 h-9 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-md transform scale-90 group-hover:scale-100 transition-transform">
+                            <Maximize2 className="w-4 h-4" />
+                          </div>
+                        </div>
+
+                        {/* Photo Index Badge */}
+                        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-[10px] font-mono-tabular pointer-events-none">
+                          {pIdx + 1}
+                        </div>
+
+                        {/* Admin quick controls */}
+                        {isAdminMode && (
+                          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleChangeWorkSectionCover(activeSection.id, photo.imageUrl);
+                              }}
+                              className="p-1 rounded bg-white text-slate-800 shadow-xs hover:bg-slate-100 cursor-pointer"
+                              title="Set as section cover"
+                            >
+                              <Camera className="w-3 h-3 text-[#f97316]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePhotoFromWorkSection(activeSection.id, photo.id);
+                              }}
+                              className="p-1 rounded bg-white text-red-600 shadow-xs hover:bg-red-50 cursor-pointer"
+                              title="Delete photo"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
+                <span className="text-slate-500 font-medium">
+                  Showing all <span className="font-bold text-slate-900">{activeSection.photos.length}</span> photographs from {activeSection.title}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedWorkSectionId(null);
+                      setShowAddWorkSectionPhotoForm(false);
+                    }}
+                    className="px-4 py-2 font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                  >
+                    Close Gallery
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL 2C: Fullscreen Section Lightbox with Next/Prev navigation & Thumbnails */}
+      {activeSectionLightbox && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none"
+          onClick={() => setActiveSectionLightbox(null)}
+        >
+          {/* Lightbox Topbar */}
+          <div
+            className="flex items-center justify-between text-white pb-3 border-b border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-0.5">
+              <h4 className="text-sm sm:text-base font-bold text-white tracking-wide">
+                {activeSectionLightbox.sectionTitle}
+              </h4>
+              <p className="text-xs font-mono-tabular text-slate-400">
+                Photo {activeSectionLightbox.currentIndex + 1} of {activeSectionLightbox.photos.length} · Arrow keys ◄ ► to navigate · Esc to close
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href={activeSectionLightbox.photos[activeSectionLightbox.currentIndex]}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Open original image in new tab"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setActiveSectionLightbox(null)}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Close Lightbox"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Lightbox Main Image Stage with Next/Prev buttons */}
+          <div
+            className="relative flex-1 flex items-center justify-center p-2 sm:p-4 min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Prev Button */}
+            {activeSectionLightbox.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveSectionLightbox((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          currentIndex:
+                            (prev.currentIndex - 1 + prev.photos.length) % prev.photos.length,
+                        }
+                      : null
+                  )
+                }
+                className="absolute left-2 sm:left-4 z-10 w-11 h-11 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                title="Previous Photo (Left Arrow)"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+
+            {/* Current Active Photo */}
+            <div className="max-w-full max-h-[75vh] flex items-center justify-center overflow-hidden">
+              <img
+                key={activeSectionLightbox.photos[activeSectionLightbox.currentIndex]}
+                src={activeSectionLightbox.photos[activeSectionLightbox.currentIndex]}
+                alt={`${activeSectionLightbox.sectionTitle} photo ${activeSectionLightbox.currentIndex + 1}`}
+                referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e, 'Civil Works', activeSectionLightbox.sectionTitle, 'Oman')}
+                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl transition-opacity duration-200"
+              />
+            </div>
+
+            {/* Next Button */}
+            {activeSectionLightbox.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveSectionLightbox((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          currentIndex: (prev.currentIndex + 1) % prev.photos.length,
+                        }
+                      : null
+                  )
+                }
+                className="absolute right-2 sm:right-4 z-10 w-11 h-11 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                title="Next Photo (Right Arrow)"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+
+          {/* Lightbox Bottom Thumbnail Strip */}
+          <div
+            className="pt-3 border-t border-white/10 overflow-x-auto no-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 justify-center min-w-max px-2">
+              {activeSectionLightbox.photos.map((thumbUrl, idx) => (
+                <button
+                  key={thumbUrl + idx}
+                  type="button"
+                  onClick={() =>
+                    setActiveSectionLightbox((prev) =>
+                      prev ? { ...prev, currentIndex: idx } : null
+                    )
+                  }
+                  className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${
+                    idx === activeSectionLightbox.currentIndex
+                      ? 'border-[#f97316] scale-105 shadow-md shadow-orange-500/30'
+                      : 'border-transparent opacity-50 hover:opacity-100'
+                  }`}
+                >
+                  <img
+                    src={thumbUrl}
+                    alt={`Thumb ${idx + 1}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e, 'Civil Works', 'Section Thumb', 'Oman')}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
             </div>
           </div>
         </div>

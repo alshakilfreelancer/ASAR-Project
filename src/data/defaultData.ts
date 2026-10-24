@@ -2193,6 +2193,4 @@ export function downloadNetlifyRedirectsFile() {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
-
-
+export * from './workSectionsData';
